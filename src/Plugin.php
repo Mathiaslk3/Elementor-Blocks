@@ -36,8 +36,6 @@ final class Plugin
         // Runtime
         $this->get(\NowOnline\EltBlocks\Rendering\Renderer::class)->register();
         $this->get(\NowOnline\EltBlocks\Blocks\TemplateBlock::class)->register();
-
-        $this->get(\NowOnline\EltBlocks\Rendering\LivePreview::class)->register();
     }
 
     /** tiny service container */
@@ -72,9 +70,6 @@ final class Plugin
             case \NowOnline\EltBlocks\Admin\Ajax::class:
                 $this->services[$class] = new \NowOnline\EltBlocks\Admin\Ajax();
                 break;
-                case \NowOnline\EltBlocks\Rendering\LivePreview::class:
-    $this->services[$class] = new \NowOnline\EltBlocks\Rendering\LivePreview();
-    break;
             default:
                 $this->services[$class] = new $class();
         }

@@ -28,39 +28,51 @@ final class TemplatesRepo
         return array_values($ids);
     }
 
-public function get_templates_map(): array
-{
-    $out = [];
+    /**
+     * Map for editor variations: [ {id,title,thumb}, ... ] limited to allow-list.
+     * @return array<int, array{id:int,title:string,thumb:string}>
+     */
+    public function get_templates_map(): array
+    {
+        $allowed = $this->get_allowed_ids();
+        if (empty($allowed)) return [];
 
-    $q = new \WP_Query([
-        'post_type'      => 'elementor_library',
-        'post_status'    => 'publish',
-        'posts_per_page' => -1,
-        'orderby'        => 'title',
-        'order'          => 'ASC',
-        'fields'         => 'ids',
-    ]);
-
-    foreach ($q->posts as $id) {
-        $thumb_id    = get_post_thumbnail_id($id);
-        $thumb_small = $thumb_id ? wp_get_attachment_image_url($thumb_id, 'thumbnail')    : '';
-        $thumb_large = $thumb_id ? wp_get_attachment_image_url($thumb_id, 'large')        : '';
-        $thumb_full  = $thumb_id ? wp_get_attachment_image_url($thumb_id, 'full')         : '';
-
-        $out[] = [
-            'id'      => (int) $id,
-            'title'   => get_the_title($id),
-            // lille ikon til inserter-flisen
-            'thumb'   => $thumb_small ?: ($thumb_large ?: $thumb_full),
-            // stor/uforkortet forhåndsvisning til canvas
-            'preview' => $thumb_large ?: $thumb_full ?: $thumb_small,
+        $exclude_types = apply_filters('nowonline_elt_excluded_types', ['header','footer','kit']);
+        $args = [
+            'post_type'      => 'elementor_library',
+            'post_status'    => ['publish','private'],
+            'posts_per_page' => -1,
+            'orderby'        => 'post__in',
+            'order'          => 'ASC',
+            'post__in'       => $allowed,
         ];
+        if (function_exists('taxonomy_exists') && taxonomy_exists('elementor_library_type')){
+            $args['tax_query'] = [[
+                'taxonomy' => 'elementor_library_type',
+                'field'    => 'slug',
+                'terms'    => $exclude_types,
+                'operator' => 'NOT IN',
+            ]];
+        }
+
+        $posts = get_posts($args);
+        $out = [];
+        foreach ($posts as $p){
+            $title = get_the_title($p) ?: ('#' . $p->ID);
+            $t     = strtolower($title);
+            if (strpos($t, 'default kit') !== false || $t === 'header' || $t === 'footer') continue;
+
+            $thumb_url = '';
+            $thumb_id  = function_exists('get_post_thumbnail_id') ? (int) get_post_thumbnail_id($p->ID) : 0;
+            if ($thumb_id){
+                $thumb_url = wp_get_attachment_image_url($thumb_id, 'thumbnail')
+                          ?: wp_get_attachment_image_url($thumb_id, 'medium')
+                          ?: wp_get_attachment_url($thumb_id);
+            }
+            $out[] = [ 'id' => (int) $p->ID, 'title' => (string) $title, 'thumb' => (string) $thumb_url ];
+        }
+        return $out;
     }
-    wp_reset_postdata();
-
-    return $out;
-}
-
 
     /**
      * Build field map: templateId => [ {key,type,label}, ... ]
