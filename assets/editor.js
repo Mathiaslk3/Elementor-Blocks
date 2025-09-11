@@ -364,30 +364,31 @@
             }
 
 // Live preview i iframe – henter frontend-renderet Elementor template
+// Canvas preview: indlæs fragment via admin-ajax (ingen admin-bar)
 function CanvasPreview() {
-  var tplId = templateId || 0;
-  if (!tplId) return null;
+  var tpl  = tplById(templateId);
+  var ajax = window.NOWONLINE_ELT_AJAX || {};
+  if (!tpl || !ajax.url || !ajax.nonce) {
+    return el('div', { className: 'now-elt-canvas-preview now-elt-preview-placeholder' });
+  }
 
-  var cfg  = window.NOWONLINE_ELT || {};
-  var base = (cfg.site || '/').replace(/\/+$/, ''); // trim trailing /
-  var url  = base + '/?nowonline_elt_live_preview=1'
-           + '&template_id=' + encodeURIComponent(tplId)
-           + '&_wpnonce='    + encodeURIComponent(cfg.nonce || '');
+  // Vælg hvilken container du vil se (standard: #nowonline-preview)
+  var selector = (design && design.previewSelector) ? design.previewSelector : '#nowonline-preview';
+
+  var qs  = 'action=nowonline_elt_preview'
+          + '&_wpnonce=' + encodeURIComponent(ajax.nonce)
+          + '&post_id='  + encodeURIComponent(tpl.id)
+          + '&selector=' + encodeURIComponent(selector);
+
+  var src = ajax.url + (ajax.url.indexOf('?') > -1 ? '&' : '?') + qs;
 
   return el('iframe', {
-    className: 'now-elt-live-iframe',
-    src: url,
-    style: { width: '100%', border: 0, minHeight: '360px', borderRadius: '10px', background:'#fff' },
-    onLoad: function (e) {
-      // auto-resize til indholdets højde
-      try {
-        var d = e.target.contentWindow.document;
-        var h = Math.max(d.body.scrollHeight, d.documentElement.scrollHeight);
-        e.target.style.height = (h + 10) + 'px';
-      } catch (err) {}
-    }
+    className: 'now-elt-preview-frame',
+    src: src,
+    loading: 'lazy'
   });
 }
+
 
 
 

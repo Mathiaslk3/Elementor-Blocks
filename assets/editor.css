@@ -19,6 +19,15 @@
   border: 1px solid #e2e4e7;
   border-radius: 10px;
 }
+
+.now-elt-preview-frame{
+  width:100%;
+  aspect-ratio:16/9;          /* justér hvis du vil */
+  border:1px solid #e2e4e7;
+  border-radius:10px;
+  background:#fff;
+}
+
 /* Stor canvas-preview (16:9) */
 /* Canvas preview frame */
 .now-elt-canvas-preview{
