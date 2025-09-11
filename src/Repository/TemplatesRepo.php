@@ -6,7 +6,10 @@ if (!defined('ABSPATH')) { exit; }
 
 final class TemplatesRepo
 {
-    public const OPT_ALLOW_LIST = 'nowonline_elt_allowed_ids';
+    /** Allow-list af Elementor template IDs (vises i editoren) */
+    public const OPT_ALLOW_LIST      = 'nowonline_elt_allowed_ids';
+    /** Evt. manuelle thumbnail-overrides: [ template_id => attachment_id ] */
+    public const OPT_THUMB_OVERRIDES = 'nowonline_elt_thumb_overrides';
 
     public function ensure_thumbnails(): void
     {
@@ -29,8 +32,8 @@ final class TemplatesRepo
     }
 
     /**
-     * Map til editor-variationer.
-     * Returnerer poster begrænset til allow-list.
+     * Map til editor-variationer (begrænset til allow-list).
+     * Returnerer både lille 'thumb' og bred 'preview' (ikke-croppet hvor muligt).
      *
      * @return array<int, array{id:int,title:string,thumb:string,preview:string}>
      */
@@ -57,6 +60,10 @@ final class TemplatesRepo
             ]];
         }
 
+        // Evt. overrides fra admin (template_id => attachment_id)
+        $overrides = get_option(self::OPT_THUMB_OVERRIDES, []);
+        if (!is_array($overrides)) $overrides = [];
+
         $posts = get_posts($args);
         $out = [];
         foreach ($posts as $p){
@@ -64,13 +71,14 @@ final class TemplatesRepo
             $t     = strtolower($title);
             if (strpos($t, 'default kit') !== false || $t === 'header' || $t === 'footer') continue;
 
-            [$thumb, $preview] = $this->build_image_urls_for_post($p->ID);
+            $override_att = isset($overrides[$p->ID]) ? (int) $overrides[$p->ID] : 0;
+            [$thumb, $preview] = $this->build_image_urls_for_post((int) $p->ID, $override_att);
 
             $out[] = [
                 'id'      => (int) $p->ID,
                 'title'   => (string) $title,
-                'thumb'   => (string) $thumb,    // lille, må gerne være crop (ok til ikon)
-                'preview' => (string) $preview,  // ikke-croppet (large/medium_large/full)
+                'thumb'   => (string) $thumb,    // lille, ok til ikon
+                'preview' => (string) $preview,  // bred/ikke-croppet
             ];
         }
         return $out;
@@ -92,14 +100,14 @@ final class TemplatesRepo
             $list = [];
             foreach ($defs as $k => $t){
                 $label = ucwords(str_replace(['_','-'], ' ', (string) $k));
-                if     ($t === 'p')                   { $label .= ' (P)'; }
-                elseif (preg_match('/^h[1-6]$/', $t)) { $label .= ' (' . strtoupper($t) . ')'; }
-                elseif ($t === 'img')                 { $label .= ' (Image)'; }
-                elseif ($t === 'bg')                  { $label .= ' (Background)'; }
-                elseif ($t === 'url')                 { $label .= ' (URL)'; }
-                elseif ($t === 'textarea')            { $label .= ' (Textarea)'; }
-                elseif ($t === 'rich' || $t === 'wysiwyg') { $label .= ' (Rich)'; }
-                else                                  { $label .= ' (Text)'; }
+                if     ($t === 'p')                      { $label .= ' (P)'; }
+                elseif (preg_match('/^h[1-6]$/', $t))    { $label .= ' (' . strtoupper($t) . ')'; }
+                elseif ($t === 'img')                    { $label .= ' (Image)'; }
+                elseif ($t === 'bg')                     { $label .= ' (Background)'; }
+                elseif ($t === 'url')                    { $label .= ' (URL)'; }
+                elseif ($t === 'textarea')               { $label .= ' (Textarea)'; }
+                elseif ($t === 'rich' || $t === 'wysiwyg'){ $label .= ' (Rich)'; }
+                else                                     { $label .= ' (Text)'; }
                 $list[] = [ 'key' => (string) $k, 'type' => (string) $t, 'label' => (string) $label ];
             }
             $res[$id] = $list;
@@ -130,6 +138,9 @@ final class TemplatesRepo
             ]];
         }
 
+        $overrides = get_option(self::OPT_THUMB_OVERRIDES, []);
+        if (!is_array($overrides)) $overrides = [];
+
         $posts = get_posts($args);
         $out = [];
         foreach ($posts as $p){
@@ -137,7 +148,8 @@ final class TemplatesRepo
             $t     = strtolower($title);
             if (strpos($t, 'default kit') !== false || $t === 'header' || $t === 'footer') continue;
 
-            [$thumb, $preview] = $this->build_image_urls_for_post($p->ID);
+            $override_att = isset($overrides[$p->ID]) ? (int) $overrides[$p->ID] : 0;
+            [$thumb, $preview] = $this->build_image_urls_for_post((int) $p->ID, $override_att);
 
             $out[] = [
                 'id'      => (int) $p->ID,
@@ -151,32 +163,39 @@ final class TemplatesRepo
 
     /**
      * Returnerer [thumb, preview] for et elementor_library-indlæg.
-     * - thumb: egnet til små ikoner (foretræk 'medium', ellers 'thumbnail', ellers 'full')
-     * - preview: bredt/ikke-croppet (foretræk 'large'/'medium_large', ellers 'full')
+     * - thumb: egnet til små ikoner (typisk 'medium' eller 'thumbnail')
+     * - preview: bred/ikke-croppet (prøv 1536/large/2048/medium_large, fald tilbage til full)
      *
+     * @param int $post_id
+     * @param int $override_att_id  Valgfri attachment-id som override (fra OPT_THUMB_OVERRIDES)
      * @return array{0:string,1:string}
      */
-    private function build_image_urls_for_post(int $post_id): array
+    private function build_image_urls_for_post(int $post_id, int $override_att_id = 0): array
     {
-        $thumb = '';
-        $preview = '';
+        $att_id = $override_att_id > 0
+            ? $override_att_id
+            : (function_exists('get_post_thumbnail_id') ? (int) get_post_thumbnail_id($post_id) : 0);
 
-        $thumb_id = function_exists('get_post_thumbnail_id') ? (int) get_post_thumbnail_id($post_id) : 0;
-        if ($thumb_id) {
-            // lille thumbnail til ikon
-            $thumb = wp_get_attachment_image_url($thumb_id, 'medium')
-                  ?: wp_get_attachment_image_url($thumb_id, 'thumbnail')
-                  ?: wp_get_attachment_url($thumb_id);
-
-            // stort, ikke-croppet preview
-            // brug large/medium_large først (typisk ikke hard-croppet), fald tilbage til full
-            $preview = wp_get_attachment_image_url($thumb_id, 'large')
-                    ?: ( function_exists('image_get_intermediate_size')
-                         ? wp_get_attachment_image_url($thumb_id, 'medium_large')
-                         : null )
-                    ?: wp_get_attachment_url($thumb_id);
+        if ($att_id <= 0) {
+            return ['', ''];
         }
 
-        return [ (string) ($thumb ?: ''), (string) ($preview ?: $thumb) ];
+        // Lille thumbnail til ikon/flise (må gerne være crop)
+        $thumb = wp_get_attachment_image_url($att_id, 'medium')
+              ?: wp_get_attachment_image_url($att_id, 'thumbnail')
+              ?: wp_get_attachment_url($att_id)
+              ?: '';
+
+        // Større, ikke-croppet preview (prøv bredere størrelser først)
+        $preview = wp_get_attachment_image_url($att_id, '1536x1536')
+                ?: wp_get_attachment_image_url($att_id, 'large')
+                ?: wp_get_attachment_image_url($att_id, '2048x2048')
+                ?: (function_exists('image_get_intermediate_size')
+                    ? wp_get_attachment_image_url($att_id, 'medium_large')
+                    : null)
+                ?: wp_get_attachment_url($att_id)
+                ?: $thumb;
+
+        return [ (string) $thumb, (string) $preview ];
     }
 }

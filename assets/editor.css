@@ -158,18 +158,26 @@
   height: auto;
   margin: 0 auto;
 }
-/* Center and cap the inner editor UI */
+/* Make our block itself 1360px wide and centered in the editor */
+.block-editor-block-list__layout.is-root-container
+  > .wp-block-nowonline-elt-template {
+  width: 1360px !important;
+  max-width: none !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Inner wrapper the block renders with */
 .now-elt-edit-root {
-  width: 1360px;          /* target width */
-  max-width: 100%;        /* shrink on small viewports */
-  margin: 0 auto;         /* center */
+  width: 1360px !important;
+  max-width: 1360px !important;
+  margin: 0 auto;
   box-sizing: border-box;
 }
 
-/* Make the preview image scale nicely and stay centered */
+/* The preview <img> should always fill that 1360px width */
 .now-elt-edit-root > img {
   display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto;
+  width: 100% !important;   /* scales to 1360px */
+  height: auto !important;  /* keep aspect ratio */
 }
