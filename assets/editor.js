@@ -15,11 +15,6 @@
   var B = WP.blockEditor || WP.editor || {};
   var Blocks = WP.blocks || {};
 
-  // React hooks
-  var useEffect = WP.element && WP.element.useEffect;
-  var useRef    = WP.element && WP.element.useRef;
-
-  // Fallbacks
   var PanelBody = C.PanelBody || function (p) { return el("div", p, p.children); };
   var TextControl = C.TextControl || function (p) { return el("input", Object.assign({ type: "text" }, p)); };
   var TextareaControl = C.TextareaControl || function (p) { return el("textarea", Object.assign({ rows: 4 }, p)); };
@@ -80,41 +75,47 @@
     return null;
   }
 
-  // ---------- Robust type normalizer ----------
-  function typeOf(def) {
-    return (def && def.type ? String(def.type) : "").toLowerCase().trim();
-  }
-  function keyOf(def) {
-    return (def && def.key ? String(def.key) : "").toLowerCase().trim();
-  }
+  // ---------- Robust type normalizer (incl. Danish aliases) ----------
+  function typeOf(def) { return (def && def.type ? String(def.type) : "").toLowerCase().trim(); }
+  function keyOf(def)  { return (def && def.key  ? String(def.key)  : "").toLowerCase().trim(); }
+
   function normalizeType(def) {
     var t = typeOf(def);
     var k = keyOf(def);
 
-    // explicit types
+    // explicit types first
     if (/^(rich|wysiwyg|richtext|rte|editor|html)$/.test(t)) return 'rich';
-    if (/^(textarea|longtext|multiline|text_area)$/.test(t)) return 'textarea';
-    if (/^(url|link|href)$/.test(t)) return 'url';
-    if (/^(img|image|picture|photo)$/.test(t)) return 'img';
-    if (/^(bg|background|background_image)$/.test(t)) return 'bg';
-    if (t === 'paragraph') return 'p';
+    if (/^(textarea|longtext|multiline|text_area)$/.test(t))  return 'textarea';
+    if (/^(url|link|href)$/.test(t))                          return 'url';
+    if (/^(img|image|picture|photo)$/.test(t))                return 'img';
+    if (/^(bg|background|background_image)$/.test(t))         return 'bg';
+    if (/^gallery$/.test(t))                                  return 'gallery';
 
-    // infer from key when type is missing/“text”
+    // Danish aliases by key (when template uses [[titel]] etc.)
+    if (['titel','undertitel','beskrivelse'].indexOf(k) >= 0) return 'rich';
+    if (k === 'billede')                                      return 'img';
+    if (k === 'galleri')                                      return 'gallery';
+
+    // infer from key if still unknown
     if (!t || t === 'text') {
       if (/(rich|wysiwyg|rte|editor|html)/.test(k)) return 'rich';
       if (/textarea|longtext|multiline/.test(k))    return 'textarea';
       if (/url|link|href/.test(k))                  return 'url';
       if (/^img|image|photo/.test(k))               return 'img';
       if (/bg|background/.test(k))                  return 'bg';
+      if (/galleri|gallery/.test(k))                return 'gallery';
     }
     return t || 'text';
   }
+
   function isRich(def)           { return normalizeType(def) === 'rich'; }
   function isTextarea(def)       { return normalizeType(def) === 'textarea'; }
   function isUrl(def)            { return normalizeType(def) === 'url'; }
   function isImage(def)          { var t = normalizeType(def); return t === 'img' || t === 'bg'; }
+  function isGallery(def)        { return normalizeType(def) === 'gallery'; }
   function isHeadingOrText(def)  { var t = normalizeType(def); return t === "text" || t === "p" || /^h[1-6]$/.test(t) || !t; }
 
+  // Single image field
   function ImageField(props, def) {
     var url = (props.attributes.fields || {})[def.key] || "";
     function onSelect(media) {
@@ -148,62 +149,48 @@
     );
   }
 
-  // ---- Klassisk TinyMCE WYSIWYG via wp.oldEditor ----
-  function ClassicWysiwyg(props) {
-    var idRef = useRef( 'now-elt-wys-' + Math.random().toString(36).slice(2) );
+  // Multi-image gallery field (stores array of URLs)
+  function GalleryField(props, def) {
+    var value = (props.attributes.fields || {})[def.key] || [];
+    if (!Array.isArray(value)) value = [];
 
-    useEffect(function () {
-      var id = idRef.current;
-      var oe = window.wp && window.wp.oldEditor;
-      var ta = document.getElementById(id);
-      if (ta) ta.value = props.value || '';
+    function onSelect(items) {
+      var urls = [];
+      if (Array.isArray(items)) urls = items.map(function(m){ return m && (m.url || m.source_url) || ""; }).filter(Boolean);
+      else if (items && items.url) urls = [items.url];
+      var next = Object.assign({}, props.attributes.fields || {});
+      next[def.key] = urls;
+      props.setAttributes({ fields: next });
+    }
+    function clear() {
+      var next = Object.assign({}, props.attributes.fields || {});
+      delete next[def.key];
+      props.setAttributes({ fields: next });
+    }
 
-      if (!oe || !window.tinymce) return;
+    var thumbs = value.length
+      ? el("div", { className: "now-elt-gallery-thumbs" },
+          value.map(function(u, i){
+            return el("img", { key: i, src: u, alt: "", className: "now-elt-imgprev", style: { maxWidth: "120px", marginRight: "6px" } });
+          })
+        )
+      : el("div", { className: "now-elt-imgprev now-elt-noimg" }, __("Ingen billeder i galleriet", "nowonline"));
 
-      try {
-        oe.initialize(id, {
-          tinymce: {
-            wpautop: true,
-            branding: false,
-            toolbar1:
-              'formatselect,bold,italic,underline,strikethrough,link,unlink,blockquote,' +
-              'bullist,numlist,alignleft,aligncenter,alignright,undo,redo',
-            block_formats: 'Paragraph=p;Heading 2=h2;Heading 3=h3;Heading 4=h4',
-            setup: function (ed) {
-              var push = function () { props.onChange && props.onChange(ed.getContent()); };
-              ed.on('change keyup NodeChange', push);
+    return el("div", { key: def.key, className: "now-elt-sec-item" },
+      el("label", { className: "now-elt-label" }, labelFor(def)),
+      thumbs,
+      MediaUpload
+        ? el(MediaUpload, {
+            onSelect: onSelect, allowedTypes: ["image"], multiple: true, gallery: true, value: 0,
+            render: function (o) {
+              return el("div", {},
+                el("button", { className: "button", onClick: o.open }, __("Vælg billeder", "nowonline")),
+                el("button", { className: "button is-secondary", onClick: clear, style: { marginLeft: "6px" } }, __("Ryd galleri", "nowonline"))
+              );
             }
-          },
-          quicktags: true
-        });
-
-        // Sync når man skriver i tekst-tilstand
-        var onTaInput = function () {
-          var val = ta ? ta.value : '';
-          props.onChange && props.onChange(val);
-        };
-        if (ta) ta.addEventListener('input', onTaInput);
-
-        return function () {
-          try { if (ta) ta.removeEventListener('input', onTaInput); } catch(e){}
-          try { oe.remove(id); } catch(e){}
-        };
-      } catch (e) {}
-    }, []);
-
-    // opdater indhold ved udefrakommende value-ændringer
-    useEffect(function () {
-      var id = idRef.current;
-      var ed = window.tinymce && window.tinymce.get(id);
-      if (ed) {
-        if ((props.value || '') !== ed.getContent()) ed.setContent(props.value || '');
-      } else {
-        var ta = document.getElementById(id);
-        if (ta && ta.value !== (props.value || '')) ta.value = props.value || '';
-      }
-    }, [props.value]);
-
-    return el('textarea', { id: idRef.current, style: { width: '100%', minHeight: '180px' } });
+          })
+        : el("div", {}, __("MediaUpload ikke tilgængelig", "nowonline"))
+    );
   }
 
   domReady(function () {
@@ -255,13 +242,13 @@
                 .concat(MAP.map(function (x) { return el("option", { value: x.id, key: x.id }, x.title || "#" + x.id); }))
             );
 
-            var defs = getFieldDefs(templateId) || [];
-
-            var richDefs   = defs.filter(isRich);
-            var textDefs   = defs.filter(function (d){ return isHeadingOrText(d) && !isRich(d); });
-            var areaDefs   = defs.filter(isTextarea);
-            var urlDefs    = defs.filter(isUrl);
-            var imageDefs  = defs.filter(isImage);
+            var defs      = getFieldDefs(templateId) || [];
+            var richDefs  = defs.filter(isRich);
+            var textDefs  = defs.filter(function (d){ return isHeadingOrText(d) && !isRich(d); });
+            var areaDefs  = defs.filter(isTextarea);
+            var urlDefs   = defs.filter(isUrl);
+            var imageDefs = defs.filter(isImage);
+            var galDefs   = defs.filter(isGallery);
 
             function Section(title, children) {
               if (!children || !children.length) return null;
@@ -285,7 +272,6 @@
               });
             }));
 
-            // URL med LinkControl (fallback til almindelig URL input)
             function UrlInput(def) {
               var value = fields[def.key] || "";
               if (LinkControl) {
@@ -310,46 +296,33 @@
             var linkInputs  = urlDefs.map(UrlInput);
 
             var imageInputs = imageDefs.map(function (def) { return ImageField(props, def); });
+            var galleryInputs = galDefs.map(function (def) { return GalleryField(props, def); });
 
-            // RICH: brug klassisk TinyMCE hvis muligt, ellers RichText som fallback
-            var richInputs = (window.wp && window.wp.oldEditor)
-              ? richDefs.map(function (def) {
-                  var value = fields[def.key] || "";
-                  return el("div", { key: def.key, className: "now-elt-sec-item" },
-                    el("div", { className: "now-elt-label" }, labelFor(def)),
-                    el(ClassicWysiwyg, {
-                      value: value,
-                      onChange: function (v) { setField(def.key, v || ""); }
-                    })
-                  );
+            var richInputs = RichText ? richDefs.map(function (def) {
+              var value = fields[def.key] || "";
+              return el("div", { key: def.key, className: "now-elt-sec-item" },
+                el("div", { className: "now-elt-label" }, labelFor(def)),
+                el(RichText, {
+                  tagName: "div",
+                  value: value,
+                  allowedFormats: [
+                    "core/bold","core/italic","core/link","core/strikethrough",
+                    "core/underline","core/text-color","core/code"
+                  ],
+                  onChange: function (v) { setField(def.key, v || ""); },
+                  placeholder: __("Skriv formateret tekst…", "nowonline")
                 })
-              : (RichText
-                ? richDefs.map(function (def) {
-                    var value = fields[def.key] || "";
-                    return el("div", { key: def.key, className: "now-elt-sec-item" },
-                      el("div", { className: "now-elt-label" }, labelFor(def)),
-                      el(RichText, {
-                        tagName: "div",
-                        value: value,
-                        allowedFormats: [
-                          "core/bold","core/italic","core/link","core/strikethrough",
-                          "core/underline","core/text-color","core/code"
-                        ],
-                        onChange: function (v) { setField(def.key, v || ""); },
-                        placeholder: __("Skriv formateret tekst…", "nowonline")
-                      })
-                    );
-                  })
-                : [ el("div", { key: "norich", className: "now-elt-muted" }, __("WYSIWYG ikke tilgængelig.", "nowonline")) ]);
+              );
+            }) : [ el("div", { key: "norich", className: "now-elt-muted" }, __("RichText-komponent ikke tilgængelig i denne editor.", "nowonline")) ];
 
             function ContentTab() {
               var pickerRow = el("div", { className: "now-elt-picker" }, picker);
               return el("div", {},
                 pickerRow,
-                Section(__("Tekster", "nowonline"),           textInputs),
-                Section(__("Formateret tekst", "nowonline"),  richInputs),
-                Section(__("Billeder", "nowonline"),          imageInputs),
-                Section(__("Links", "nowonline"),             linkInputs)
+                Section(__("Formateret tekst", "nowonline"), richInputs),
+                Section(__("Tekster", "nowonline"),         textInputs),
+                Section(__("Links", "nowonline"),           linkInputs),
+                Section(__("Billeder", "nowonline"),        imageInputs.concat(galleryInputs))
               );
             }
 
@@ -358,10 +331,7 @@
               var src = tpl.preview || tpl.thumb || '';
               if (!src) return null;
               return el('img', {
-                src: src,
-                alt: '',
-                draggable: false,
-                decoding: 'async',
+                src: src, alt: '', draggable: false, decoding: 'async',
                 style: { display: 'block', maxWidth: '100%', height: 'auto', margin: '0 auto' }
               });
             }
@@ -384,8 +354,7 @@
               return ContentTab();
             }) : el("div", {}, ContentTab(), DesignTab(), BackgroundTab(), AdvancedTab());
 
-            // IMPORTANT: useBlockProps så RichText/TinyMCE placerer UI korrekt
-            var blockProps = useBlockProps();
+            var blockProps = useBlockProps ? useBlockProps() : {};
             var rootProps = Object.assign({}, blockProps, {
               className: ((blockProps.className || "") + " now-elt-edit-root").trim()
             });

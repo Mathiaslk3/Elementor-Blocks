@@ -29,119 +29,115 @@ final class Renderer
      * Server-side render callback for the block.
      */
     public function render($attrs = [], $content = ''): string
-    {
-        $tid    = isset($attrs['templateId']) ? (int) $attrs['templateId'] : 0;
-        $gap    = isset($attrs['gap']) ? (int) $attrs['gap'] : 24;
-        $fields = (isset($attrs['fields']) && is_array($attrs['fields'])) ? $attrs['fields'] : [];
+{
+    $tid    = isset($attrs['templateId']) ? (int) $attrs['templateId'] : 0;
+    $gap    = isset($attrs['gap']) ? (int) $attrs['gap'] : 24;
+    $fields = (isset($attrs['fields']) && is_array($attrs['fields'])) ? $attrs['fields'] : [];
 
-        if ($tid <= 0) {
-            return '<div class="nowonline-elt-empty">' . esc_html__('Vælg en Elementor-template fra blok-listen.', 'nowonline') . '</div>';
-        }
-
-        $style = '--nowonline-elt-gap:' . $gap . 'px;';
-
-        // Hent Elementor-output
-        $html = '';
-        if (did_action('elementor/loaded') && class_exists('\\Elementor\\Plugin')) {
-            $inst = \Elementor\Plugin::$instance;
-            if ($inst && isset($inst->frontend) && method_exists($inst->frontend, 'get_builder_content_for_display')) {
-                $html = $inst->frontend->get_builder_content_for_display($tid, true);
-            }
-        }
-        if (!$html && function_exists('do_shortcode')) {
-            $html = do_shortcode('[elementor-template id="' . $tid . '"]');
-        }
-
-        if ($html && !empty($fields)) {
-            // defs: key => type
-            $defs = $this->scanner->scan($tid);
-
-            // Byg hurtig map af key->type (lowercased)
-            $typeMap = [];
-            foreach ((array) $defs as $k => $t) {
-                $typeMap[strtolower((string)$k)] = strtolower((string)$t ?: 'text');
-            }
-
-            // Normalisér type-navne
-            $normalize = static function(string $t, string $keyGuess = ''): string {
-                $t = strtolower(trim($t));
-                $k = strtolower(trim($keyGuess));
-                if ($t === '') $t = 'text';
-
-                // direkte aliaser
-                if (in_array($t, ['rich','wysiwyg','richtext','rte','editor','html'], true)) return 'rich';
-                if (in_array($t, ['textarea','longtext','multiline','text_area'], true))    return 'textarea';
-                if (in_array($t, ['url','link','href'], true))                               return 'url';
-                if (in_array($t, ['img','image','picture','photo'], true))                   return 'img';
-                if (in_array($t, ['bg','background','background_image'], true))              return 'bg';
-                if ($t === 'paragraph')                                                     return 'p';
-
-                // inferer fra key hvis type var "text"/tom
-                if ($t === 'text') {
-                    if (preg_match('/(rich|wysiwyg|rte|editor|html)/', $k)) return 'rich';
-                    if (preg_match('/textarea|longtext|multiline/', $k))    return 'textarea';
-                    if (preg_match('/url|link|href/', $k))                   return 'url';
-                    if (preg_match('/^(img|image|photo)/', $k))              return 'img';
-                    if (preg_match('/bg|background/', $k))                   return 'bg';
-                }
-                return $t;
-            };
-
-            // Konverter WYSIWYG til "inline" (til brug i Heading m.m.)
-            $inlineFromRich = static function(string $htmlValue): string {
-                $safe = wp_kses_post($htmlValue);
-                // Saml p-paragraffer til linjer med <br>, fjern p-wrappers
-                $safe = preg_replace('~\s*</p>\s*<p[^>]*>\s*~i', "<br>", $safe ?? '');
-                $safe = preg_replace('~^\s*<p[^>]*>\s*~i', '', $safe ?? '');
-                $safe = preg_replace('~\s*</p>\s*$~i', '', $safe ?? '');
-                // Hvis der stadig er <p> tilbage, drop tags men bevar indhold
-                $safe = preg_replace('~</?p[^>]*>~i', '', $safe ?? '');
-                return $safe;
-            };
-
-            // Samlet token-erstatning med regex
-            // Matcher [[ key ]] eller [[alias:key]] — alias kan fx være rich, wysiwyg, textarea, url, img, bg, text, p, h1..h6, rich-inline
-            $pattern = '/\[\[\s*(?:(?<alias>rich|wysiwyg|rich-inline|textarea|url|img|bg|text|p|h[1-6])\s*:\s*)?(?<key>[a-z0-9_-]+)\s*\]\]/i';
-
-            $html = preg_replace_callback($pattern, function($m) use ($fields, $typeMap, $normalize, $inlineFromRich) {
-                $key   = strtolower($m['key']);
-                $alias = isset($m['alias']) ? strtolower($m['alias']) : '';
-
-                if (!array_key_exists($key, $fields)) {
-                    // Ukendt/ikke-udfyldt: fjern token
-                    return '';
-                }
-
-                $raw  = (string) $fields[$key];
-                $type = $alias ?: ($typeMap[$key] ?? 'text');
-                $type = $normalize($type, $key);
-
-                switch ($type) {
-                    case 'rich':
-                        // Normal WYSIWYG
-                        return wp_kses_post($raw);
-
-                    case 'rich-inline':
-                        // Inline-version til Heading etc.
-                        return $inlineFromRich($raw);
-
-                    case 'textarea':
-                        return nl2br( esc_html($raw) );
-
-                    case 'url':
-                        return esc_url($raw);
-
-                    case 'img':
-                    case 'bg':
-                        return esc_url($raw);
-
-                    // tekst/p/h1..h6 -> ren tekst
-                    default:
-                        return esc_html($raw);
-                }
-            }, $html);
-        }
-
-        return '<div class="nowonline-elt-wrapper" style="' . esc_attr($style) . '"><div class="nowonline-elt-module" data-template-id="' . (int) $tid . '">' . $html . '</div></div>';
+    if ($tid <= 0) {
+        return '<div class="nowonline-elt-empty">' . esc_html__('Vælg en Elementor-template fra blok-listen.', 'nowonline') . '</div>';
     }
+
+    $style = '--nowonline-elt-gap:' . $gap . 'px;';
+
+    // Get Elementor HTML
+    $html = '';
+    if (did_action('elementor/loaded') && class_exists('\\Elementor\\Plugin')) {
+        $inst = \Elementor\Plugin::$instance;
+        if ($inst && isset($inst->frontend) && method_exists($inst->frontend, 'get_builder_content_for_display')) {
+            $html = $inst->frontend->get_builder_content_for_display($tid, true);
+        }
+    }
+    if (!$html && function_exists('do_shortcode')) {
+        $html = do_shortcode('[elementor-template id="' . $tid . '"]');
+    }
+
+    if ($html && !empty($fields)) {
+        $defs = $this->scanner->scan($tid); // key => type
+
+        // helper: normalize type from defs or key (Danish aliases)
+        $normType = static function (string $key) use ($defs): string {
+            $k = strtolower($key);
+            $t = isset($defs[$k]) ? strtolower((string)$defs[$k]) : '';
+            if ($t) return $t;
+            if (in_array($k, ['titel','undertitel','beskrivelse'], true)) return 'rich';
+            if ($k === 'billede') return 'img';
+            if ($k === 'galleri') return 'gallery';
+            return 'text';
+        };
+
+        $search  = [];
+        $replace = [];
+
+        foreach ($fields as $k => $v) {
+            $key  = strtolower((string)$k);
+            $type = $normType($key);
+
+            if ($type === 'img' || $type === 'bg') {
+                $url = esc_url((string) $v);
+                foreach (['[[img:' . $key . ']]', '[[bg:' . $key . ']]', '[['.$key.']]'] as $tok) {
+                    $search[]  = $tok; 
+                    $replace[] = $url;
+                }
+
+            } elseif ($type === 'url') {
+                $url = esc_url((string) $v);
+                foreach (['[[url:' . $key . ']]', '[[' . $key . ']]'] as $tok) {
+                    $search[]  = $tok; 
+                    $replace[] = $url;
+                }
+
+            } elseif ($type === 'textarea') {
+                $txt = nl2br( esc_html( (string) $v ) );
+                foreach (['[[textarea:' . $key . ']]', '[[' . $key . ']]'] as $tok) {
+                    $search[]  = $tok; 
+                    $replace[] = $txt;
+                }
+
+            } elseif ($type === 'rich' || $type === 'wysiwyg') {
+                $html_val = wp_kses_post( (string) $v );
+                foreach (['[[rich:' . $key . ']]', '[[wysiwyg:' . $key . ']]', '[['.$key.']]'] as $tok) {
+                    $search[]  = $tok; 
+                    $replace[] = $html_val;
+                }
+
+            } elseif ($type === 'gallery') {
+                // Accept array of URLs (preferred) or comma-separated string
+                $urls = [];
+                if (is_array($v)) {
+                    foreach ($v as $u) { $u = trim((string)$u); if ($u !== '') $urls[] = esc_url($u); }
+                } else {
+                    $parts = array_map('trim', explode(',', (string)$v));
+                    foreach ($parts as $u) { if ($u !== '') $urls[] = esc_url($u); }
+                }
+                $gallery_html = '';
+                if ($urls) {
+                    $items = '';
+                    foreach ($urls as $u) {
+                        $items .= '<img src="'. $u .'" alt="" />';
+                    }
+                    $gallery_html = '<div class="nowonline-elt-gallery">'. $items .'</div>';
+                }
+                foreach (['[[gallery:' . $key . ']]', '[[galleri:' . $key . ']]', '[['.$key.']]'] as $tok) {
+                    $search[]  = $tok; 
+                    $replace[] = $gallery_html;
+                }
+
+            } else { // text / p / h1..h6 / default
+                $txt = esc_html( (string) $v );
+                foreach (['[[' . $key . ']]','[[text:' . $key . ']]','[[p:' . $key . ']]','[[h1:' . $key . ']]','[[h2:' . $key . ']]','[[h3:' . $key . ']]','[[h4:' . $key . ']]','[[h5:' . $key . ']]','[[h6:' . $key . ']]'] as $tok) {
+                    $search[]  = $tok; 
+                    $replace[] = $txt;
+                }
+            }
+        }
+
+        if ($search) {
+            $html = str_replace($search, $replace, $html);
+        }
+    }
+
+    return '<div class="nowonline-elt-wrapper" style="' . esc_attr($style) . '"><div class="nowonline-elt-module" data-template-id="' . (int) $tid . '">' . $html . '</div></div>';
+}
+
 }
