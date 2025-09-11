@@ -224,14 +224,14 @@ function CanvasPreview() {
   // intet valgt = intet preview (eller returnér en lille tekst hvis du vil)
   if (!src) return null;
 
-  return el('img', {
-    src: src,
-    alt: '',
-    draggable: false,
-    decoding: 'async',
-    // naturlig størrelse; maxWidth holder den inde i editorens kolonne
-    style: { display: 'block', width: 'auto', height: 'auto', maxWidth: '100%' }
-  });
+return el('img', {
+  src: src,
+  alt: '',
+  draggable: false,
+  decoding: 'async',
+  style: { display: 'block', maxWidth: '100%', height: 'auto', margin: '0 auto' }
+});
+
 }
 
 

@@ -81,3 +81,95 @@
   .block-editor-block-types-list__item-title {
   margin-top:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;
 }
+/* Editor: Center og fast bredde for vores block */
+.wp-block-nowonline-elt-template .now-elt-edit-root{
+  width: 1360px;        /* ønsket arbejdsbredde */
+  max-width: 100%;      /* så den ikke sprænger editorens viewport */
+  margin-left: auto;    /* centrer i editoren */
+  margin-right: auto;   /* centrer i editoren */
+  box-sizing: border-box;
+}
+
+/* Hvis du kun viser et billede som preview: centrer og respekter proportioner */
+.wp-block-nowonline-elt-template .now-elt-edit-root > img{
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;       /* centrer selve billedet */
+}
+
+/* Sikrer at dine sektioner ikke “stikker ud” */
+.wp-block-nowonline-elt-template .now-elt-wrap,
+.wp-block-nowonline-elt-template .now-elt-sec{
+  max-width: 100%;
+}
+/* Fjern editorens max-width for vores blok */
+.editor-styles-wrapper
+  .block-editor-block-list__layout .block-editor-block-list__block[data-type="nowonline/elt-template"],
+.editor-styles-wrapper
+  .wp-block-nowonline-elt-template {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* Gør hele blokken 100% bred (i editoren) og centrer indholdet */
+.editor-styles-wrapper .wp-block-nowonline-elt-template .now-elt-edit-root{
+  width: 1360px;          /* ønsket arbejdsbredde */
+  max-width: 100%;        /* skaler ned på små skærme */
+  margin-left: auto;      /* centrer */
+  margin-right: auto;     /* centrer */
+  box-sizing: border-box;
+}
+
+/* Hvis du kun viser et IMG i preview, så centrer og respekter størrelse */
+.editor-styles-wrapper .wp-block-nowonline-elt-template .now-elt-edit-root > img{
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+/* 1) Override Gutenberg's 800px clamp for our block wrapper */
+.block-editor-block-list__layout.is-root-container
+  > .wp-block-nowonline-elt-template,
+.block-editor-block-list__layout.is-root-container
+  > .block-editor-block-list__block[data-type="nowonline/elt-template"],
+.editor-styles-wrapper .is-root-container
+  > .wp-block-nowonline-elt-template {
+  /* beat the :where(...) rule */
+  max-width: 1360px !important;
+  width: 100% !important;         /* still shrink on small viewports */
+  margin-left: auto !important;   /* keep centered */
+  margin-right: auto !important;
+}
+
+/* 2) Center your inner editor UI and keep it at 1360px */
+.wp-block-nowonline-elt-template .now-elt-edit-root {
+  width: 1360px;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+/* 3) Your preview <img> should center + scale nicely */
+.wp-block-nowonline-elt-template .now-elt-edit-root > img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+/* Center and cap the inner editor UI */
+.now-elt-edit-root {
+  width: 1360px;          /* target width */
+  max-width: 100%;        /* shrink on small viewports */
+  margin: 0 auto;         /* center */
+  box-sizing: border-box;
+}
+
+/* Make the preview image scale nicely and stay centered */
+.now-elt-edit-root > img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
