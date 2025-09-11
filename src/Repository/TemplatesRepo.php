@@ -13,15 +13,12 @@ final class TemplatesRepo
 
     public function ensure_thumbnails(): void
     {
-        // Elementor library skal have thumbnail-support til vores previews
         if (function_exists('add_post_type_support')) {
             add_post_type_support('elementor_library', 'thumbnail');
         }
     }
 
-    /**
-     * @return int[]
-     */
+    /** @return int[] */
     public function get_allowed_ids(): array
     {
         $ids = get_option(self::OPT_ALLOW_LIST, []);
@@ -33,8 +30,6 @@ final class TemplatesRepo
 
     /**
      * Map til editor-variationer (begrænset til allow-list).
-     * Returnerer både lille 'thumb' og bred 'preview' (ikke-croppet hvor muligt).
-     *
      * @return array<int, array{id:int,title:string,thumb:string,preview:string}>
      */
     public function get_templates_map(): array
@@ -60,7 +55,6 @@ final class TemplatesRepo
             ]];
         }
 
-        // Evt. overrides fra admin (template_id => attachment_id)
         $overrides = get_option(self::OPT_THUMB_OVERRIDES, []);
         if (!is_array($overrides)) $overrides = [];
 
@@ -77,15 +71,15 @@ final class TemplatesRepo
             $out[] = [
                 'id'      => (int) $p->ID,
                 'title'   => (string) $title,
-                'thumb'   => (string) $thumb,    // lille, ok til ikon
-                'preview' => (string) $preview,  // bred/ikke-croppet
+                'thumb'   => (string) $thumb,
+                'preview' => (string) $preview,
             ];
         }
         return $out;
     }
 
     /**
-     * Scanner placeholders for udvalgte templates.
+     * Scanner placeholders for udvalgte templates og normaliserer felttyper.
      * @param int[] $ids
      * @return array<int,array<int,array{key:string,type:string,label:string}>>
      */
@@ -99,16 +93,41 @@ final class TemplatesRepo
             $defs = $scanner->scan($id); // key => type
             $list = [];
             foreach ($defs as $k => $t){
-                $label = ucwords(str_replace(['_','-'], ' ', (string) $k));
-                if     ($t === 'p')                      { $label .= ' (P)'; }
-                elseif (preg_match('/^h[1-6]$/', $t))    { $label .= ' (' . strtoupper($t) . ')'; }
-                elseif ($t === 'img')                    { $label .= ' (Image)'; }
-                elseif ($t === 'bg')                     { $label .= ' (Background)'; }
-                elseif ($t === 'url')                    { $label .= ' (URL)'; }
-                elseif ($t === 'textarea')               { $label .= ' (Textarea)'; }
-                elseif ($t === 'rich' || $t === 'wysiwyg'){ $label .= ' (Rich)'; }
-                else                                     { $label .= ' (Text)'; }
-                $list[] = [ 'key' => (string) $k, 'type' => (string) $t, 'label' => (string) $label ];
+                $key   = (string) $k;
+                $type  = strtolower(trim((string) $t));
+
+                // --- alias-normalisering ---
+                if (in_array($type, ['richtext','wysiwyg','rte','editor','html'], true)) {
+                    $type = 'rich';
+                } elseif (in_array($type, ['longtext','multiline','text_area'], true)) {
+                    $type = 'textarea';
+                } elseif (in_array($type, ['link','href'], true)) {
+                    $type = 'url';
+                } elseif (in_array($type, ['image','picture','photo','graphic'], true)) {
+                    $type = 'img';
+                } elseif (in_array($type, ['background','background_image'], true)) {
+                    $type = 'bg';
+                } elseif ($type === 'paragraph') {
+                    $type = 'p';
+                }
+                // h1..h6 lader vi passere som er (matcher i editoren)
+
+                // Label baseret på NORMALISERET type
+                $label = ucwords(str_replace(['_','-'], ' ', $key));
+                if     ($type === 'p')                 { $label .= ' (P)'; }
+                elseif (preg_match('/^h[1-6]$/', $type)) { $label .= ' (' . strtoupper($type) . ')'; }
+                elseif ($type === 'img')              { $label .= ' (Image)'; }
+                elseif ($type === 'bg')               { $label .= ' (Background)'; }
+                elseif ($type === 'url')              { $label .= ' (URL)'; }
+                elseif ($type === 'textarea')         { $label .= ' (Textarea)'; }
+                elseif ($type === 'rich')             { $label .= ' (Rich)'; }
+                else                                  { $label .= ' (Text)'; }
+
+                $list[] = [
+                    'key'   => $key,
+                    'type'  => $type,   // <= vigtigt: send kanonisk type til JS
+                    'label' => $label,
+                ];
             }
             $res[$id] = $list;
         }
@@ -163,11 +182,8 @@ final class TemplatesRepo
 
     /**
      * Returnerer [thumb, preview] for et elementor_library-indlæg.
-     * - thumb: egnet til små ikoner (typisk 'medium' eller 'thumbnail')
-     * - preview: bred/ikke-croppet (prøv 1536/large/2048/medium_large, fald tilbage til full)
-     *
      * @param int $post_id
-     * @param int $override_att_id  Valgfri attachment-id som override (fra OPT_THUMB_OVERRIDES)
+     * @param int $override_att_id
      * @return array{0:string,1:string}
      */
     private function build_image_urls_for_post(int $post_id, int $override_att_id = 0): array
@@ -180,13 +196,11 @@ final class TemplatesRepo
             return ['', ''];
         }
 
-        // Lille thumbnail til ikon/flise (må gerne være crop)
         $thumb = wp_get_attachment_image_url($att_id, 'medium')
               ?: wp_get_attachment_image_url($att_id, 'thumbnail')
               ?: wp_get_attachment_url($att_id)
               ?: '';
 
-        // Større, ikke-croppet preview (prøv bredere størrelser først)
         $preview = wp_get_attachment_image_url($att_id, '1536x1536')
                 ?: wp_get_attachment_image_url($att_id, 'large')
                 ?: wp_get_attachment_image_url($att_id, '2048x2048')
