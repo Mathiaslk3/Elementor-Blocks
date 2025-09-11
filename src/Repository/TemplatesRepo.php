@@ -10,7 +10,7 @@ final class TemplatesRepo
 
     public function ensure_thumbnails(): void
     {
-        // why: Elementor library needs thumbnail support for our previews
+        // Elementor library skal have thumbnail-support til vores previews
         if (function_exists('add_post_type_support')) {
             add_post_type_support('elementor_library', 'thumbnail');
         }
@@ -29,8 +29,10 @@ final class TemplatesRepo
     }
 
     /**
-     * Map for editor variations: [ {id,title,thumb}, ... ] limited to allow-list.
-     * @return array<int, array{id:int,title:string,thumb:string}>
+     * Map til editor-variationer.
+     * Returnerer poster begrænset til allow-list.
+     *
+     * @return array<int, array{id:int,title:string,thumb:string,preview:string}>
      */
     public function get_templates_map(): array
     {
@@ -62,20 +64,20 @@ final class TemplatesRepo
             $t     = strtolower($title);
             if (strpos($t, 'default kit') !== false || $t === 'header' || $t === 'footer') continue;
 
-            $thumb_url = '';
-            $thumb_id  = function_exists('get_post_thumbnail_id') ? (int) get_post_thumbnail_id($p->ID) : 0;
-            if ($thumb_id){
-                $thumb_url = wp_get_attachment_image_url($thumb_id, 'thumbnail')
-                          ?: wp_get_attachment_image_url($thumb_id, 'medium')
-                          ?: wp_get_attachment_url($thumb_id);
-            }
-            $out[] = [ 'id' => (int) $p->ID, 'title' => (string) $title, 'thumb' => (string) $thumb_url ];
+            [$thumb, $preview] = $this->build_image_urls_for_post($p->ID);
+
+            $out[] = [
+                'id'      => (int) $p->ID,
+                'title'   => (string) $title,
+                'thumb'   => (string) $thumb,    // lille, må gerne være crop (ok til ikon)
+                'preview' => (string) $preview,  // ikke-croppet (large/medium_large/full)
+            ];
         }
         return $out;
     }
 
     /**
-     * Build field map: templateId => [ {key,type,label}, ... ]
+     * Scanner placeholders for udvalgte templates.
      * @param int[] $ids
      * @return array<int,array<int,array{key:string,type:string,label:string}>>
      */
@@ -90,14 +92,14 @@ final class TemplatesRepo
             $list = [];
             foreach ($defs as $k => $t){
                 $label = ucwords(str_replace(['_','-'], ' ', (string) $k));
-                if     ($t === 'p')                 { $label .= ' (P)'; }
+                if     ($t === 'p')                   { $label .= ' (P)'; }
                 elseif (preg_match('/^h[1-6]$/', $t)) { $label .= ' (' . strtoupper($t) . ')'; }
-                elseif ($t === 'img')              { $label .= ' (Image)'; }
-                elseif ($t === 'bg')               { $label .= ' (Background)'; }
-                elseif ($t === 'url')              { $label .= ' (URL)'; }
-                elseif ($t === 'textarea')         { $label .= ' (Textarea)'; }
+                elseif ($t === 'img')                 { $label .= ' (Image)'; }
+                elseif ($t === 'bg')                  { $label .= ' (Background)'; }
+                elseif ($t === 'url')                 { $label .= ' (URL)'; }
+                elseif ($t === 'textarea')            { $label .= ' (Textarea)'; }
                 elseif ($t === 'rich' || $t === 'wysiwyg') { $label .= ' (Rich)'; }
-                else                                { $label .= ' (Text)'; }
+                else                                  { $label .= ' (Text)'; }
                 $list[] = [ 'key' => (string) $k, 'type' => (string) $t, 'label' => (string) $label ];
             }
             $res[$id] = $list;
@@ -105,7 +107,10 @@ final class TemplatesRepo
         return $res;
     }
 
-    /** Admin list helper (ignores allow-list; full browse) */
+    /**
+     * Admin-liste (ignorerer allow-list; fuld browse)
+     * @return array<int, array{id:int,title:string,thumb:string,preview:string}>
+     */
     public function get_all_for_admin(): array
     {
         $exclude_types = ['header','footer','kit'];
@@ -132,15 +137,46 @@ final class TemplatesRepo
             $t     = strtolower($title);
             if (strpos($t, 'default kit') !== false || $t === 'header' || $t === 'footer') continue;
 
-            $thumb_url = '';
-            $thumb_id  = function_exists('get_post_thumbnail_id') ? (int) get_post_thumbnail_id($p->ID) : 0;
-            if ($thumb_id){
-                $thumb_url = wp_get_attachment_image_url($thumb_id, 'medium')
-                          ?: wp_get_attachment_image_url($thumb_id, 'thumbnail')
-                          ?: wp_get_attachment_url($thumb_id);
-            }
-            $out[] = [ 'id' => (int) $p->ID, 'title' => (string) $title, 'thumb' => (string) $thumb_url ];
+            [$thumb, $preview] = $this->build_image_urls_for_post($p->ID);
+
+            $out[] = [
+                'id'      => (int) $p->ID,
+                'title'   => (string) $title,
+                'thumb'   => (string) $thumb,
+                'preview' => (string) $preview,
+            ];
         }
         return $out;
+    }
+
+    /**
+     * Returnerer [thumb, preview] for et elementor_library-indlæg.
+     * - thumb: egnet til små ikoner (foretræk 'medium', ellers 'thumbnail', ellers 'full')
+     * - preview: bredt/ikke-croppet (foretræk 'large'/'medium_large', ellers 'full')
+     *
+     * @return array{0:string,1:string}
+     */
+    private function build_image_urls_for_post(int $post_id): array
+    {
+        $thumb = '';
+        $preview = '';
+
+        $thumb_id = function_exists('get_post_thumbnail_id') ? (int) get_post_thumbnail_id($post_id) : 0;
+        if ($thumb_id) {
+            // lille thumbnail til ikon
+            $thumb = wp_get_attachment_image_url($thumb_id, 'medium')
+                  ?: wp_get_attachment_image_url($thumb_id, 'thumbnail')
+                  ?: wp_get_attachment_url($thumb_id);
+
+            // stort, ikke-croppet preview
+            // brug large/medium_large først (typisk ikke hard-croppet), fald tilbage til full
+            $preview = wp_get_attachment_image_url($thumb_id, 'large')
+                    ?: ( function_exists('image_get_intermediate_size')
+                         ? wp_get_attachment_image_url($thumb_id, 'medium_large')
+                         : null )
+                    ?: wp_get_attachment_url($thumb_id);
+        }
+
+        return [ (string) ($thumb ?: ''), (string) ($preview ?: $thumb) ];
     }
 }

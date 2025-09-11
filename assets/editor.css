@@ -1,149 +1,66 @@
+/* Basics */
 .now-elt-wrap {
   background: #fff;
   border: 1px solid #e2e4e7;
   padding: 8px;
   margin: 8px 0;
 }
-.now-elt-label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.now-elt-sec {
-  background: #fff;
-  border: 1px solid #e2e4e7;
-  padding: 8px;
-  margin: 8px 0;
-}
-.now-elt-sec-title {
-  font-weight: 600;
-  margin-bottom: 6px;
-}
+.now-elt-label { display:block; font-weight:600; margin-bottom:4px; }
+.now-elt-sec { background:#fff; border:1px solid #e2e4e7; padding:8px; margin:8px 0; }
+.now-elt-sec-title { font-weight:600; margin-bottom:6px; }
 .now-elt-imgprev {
-  max-width: 100%;
-  height: auto;
-  display: block;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  margin-bottom: 6px;
-  background: #f8f8f8;
+  max-width:100%; height:auto; display:block;
+  border:1px solid #ddd; border-radius:4px; margin-bottom:6px; background:#f8f8f8;
 }
 .now-elt-imgprev.now-elt-noimg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #777;
-  height: 140px;
+  display:flex; align-items:center; justify-content:center;
+  color:#777; height:140px;
 }
-.now-elt-tokens {
-  margin-top: 6px;
-  opacity: 0.75;
-  font-size: 12px;
-}
-.now-elt-muted {
-  opacity: 0.7;
-}
-.now-elt-gap {
-  margin-top: 8px;
-}
-.now-elt-select {
-  margin-top: 8px;
-}
-.block-editor-inserter__panel .block-editor-block-icon img.nowonline-elt-icon {
-  width: 40px !important;
-  height: 40px !important;
-  border-radius: 6px;
-  object-fit: cover;
-}
+.now-elt-tokens { margin-top:6px; opacity:.75; font-size:12px; }
+.now-elt-muted { opacity:.7; }
+.now-elt-gap { margin-top:8px; }
+.now-elt-select { margin-top:8px; }
 
-/* (valgfri) lidt luft omkring ikon i flisen */
+/* Inserter tile icon */
+.block-editor-inserter__panel .block-editor-block-icon img.nowonline-elt-icon {
+  width:40px !important; height:40px !important; border-radius:6px; object-fit:cover;
+}
 .block-editor-inserter__panel
   .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
   .block-editor-block-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display:flex; align-items:center; justify-content:center;
 }
-/* Canvas preview for NowOnline Elementor block */
+
+/* Canvas preview (toppen af blockens edit UI) */
+/* Canvas preview – fyld hele bredden og bevar format */
 .now-elt-canvas-preview {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   padding: 10px 12px;
   margin: 10px 0 14px;
   background: #fff;
   border: 1px solid #e2e4e7;
   border-radius: 10px;
 }
+
 .now-elt-preview-img-wrap {
-  flex: 0 0 auto;
-}
-.now-elt-preview-img {
-  width: 180px;
-  height: 120px;
-  object-fit: cover;
-  border-radius: 8px;
+  width: 100%;
+  aspect-ratio: 16 / 9;     /* fin standard; justeres automatisk med contain */
   border: 1px solid #e2e4e7;
+  border-radius: 8px;
   background: #f6f7f7;
-  display: block;
-}
-.now-elt-preview-placeholder {
-  width: 180px;
-  height: 120px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #eef1f4, #e9edf2);
-  border: 1px dashed #cbd0d6;
-}
-.now-elt-preview-meta {
-  line-height: 1.25;
-}
-.now-elt-preview-title {
-  font-weight: 600;
-}
-.now-elt-preview-note {
-  opacity: 0.7;
-  font-size: 12px;
-  margin-top: 2px;
-}
-/* Canvas preview */
-.now-elt-canvas-preview {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 10px 0 14px;
-}
-.now-elt-preview-img-wrap {
-  width: 120px;
-  height: 80px;
-  flex: 0 0 auto;
-  border: 1px solid #e2e4e7;
-  background: #fff;
-  border-radius: 6px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
+
 .now-elt-preview-img {
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;       /* vis hele billedet */
   display: block;
 }
-.now-elt-preview-placeholder {
-  background: #f6f7f7;
-}
-.now-elt-preview-meta {
-  line-height: 1.2;
-}
-.now-elt-preview-title {
-  font-weight: 600;
-}
-.now-elt-preview-note {
-  opacity: 0.6;
-  font-size: 12px;
-}
 
-/* Inserter tiles: make our block tiles bigger and use the template thumbnail */
+/* Inserter tiles: bigger + use template thumbnail */
 .block-editor-inserter__results
   .block-editor-block-types-list__item[data-type="nowonline/elt-template"] {
   min-width: 220px;
@@ -151,28 +68,16 @@
 .block-editor-inserter__results
   .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
   .block-editor-block-icon {
-  width: 220px;
-  height: 140px;
-  border: 1px solid #e2e4e7;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
+  width: 220px; height: 140px;
+  border:1px solid #e2e4e7; border-radius:8px; overflow:hidden; background:#fff;
 }
 .block-editor-inserter__results
   .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
-  .block-editor-block-icon
-  img.now-elt-var-thumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+  .block-editor-block-icon img.now-elt-var-thumb {
+  width:100%; height:100%; object-fit:cover; display:block;
 }
 .block-editor-inserter__results
   .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
   .block-editor-block-types-list__item-title {
-  margin-top: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 220px;
+  margin-top:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;
 }
