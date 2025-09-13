@@ -60,29 +60,32 @@ final class Assets
     /**
      * Editor assets + data bridge for editor.js
      */
-    private function enqueue_editor(string $ver): void
-    {
-        // Data for editor
-        $map       = $this->repo->get_templates_map(); // [ [id,title,thumb], ... ]
-        $ids       = array_map(static fn($t) => isset($t['id']) ? (int)$t['id'] : 0, $map);
-        $field_map = $this->repo->get_templates_fieldmap($ids, $this->scanner); // id => [ {key,type,label}, ... ]
-
-        $map_json  = function_exists('wp_json_encode') ? wp_json_encode($map)       : json_encode($map);
-        $fmap_json = function_exists('wp_json_encode') ? wp_json_encode($field_map) : json_encode($field_map);
-
-        // Register + enqueue editor assets
-        $deps = ['wp-blocks','wp-element','wp-i18n','wp-components','wp-block-editor','wp-editor','wp-dom-ready'];
-        if (!wp_script_is('nowonline-elt-blocks-js','registered')){
-            wp_register_script('nowonline-elt-blocks-js', plugins_url('assets/editor.js', NOWONLINE_ELT_FILE), $deps, $ver, true);
-        }
-        // Data bridge (before the main file executes)
-        wp_add_inline_script('nowonline-elt-blocks-js', 'window.NOWONLINE_TEMPLATES='.$map_json.';window.NOWONLINE_FIELDS='.$fmap_json.';', 'before');
-        wp_enqueue_script('nowonline-elt-blocks-js');
-
-        // Editor CSS (preview + larger inserter tiles)
-        if (!wp_style_is('nowonline-elt-blocks-css','registered')){
-            wp_register_style('nowonline-elt-blocks-css', plugins_url('assets/editor.css', NOWONLINE_ELT_FILE), [], $ver);
-        }
-        wp_enqueue_style('nowonline-elt-blocks-css');
+private function enqueue_editor(string $ver): void
+{
+    // Classic editor (TinyMCE) assets skal være til stede
+    if (function_exists('wp_enqueue_editor')) {
+        wp_enqueue_editor();
     }
+
+    // Data til editor.js … (uændret)
+    $map       = $this->repo->get_templates_map();
+    $ids       = array_map(static fn($t) => isset($t['id']) ? (int)$t['id'] : 0, $map);
+    $field_map = $this->repo->get_templates_fieldmap($ids, $this->scanner);
+
+    $map_json  = function_exists('wp_json_encode') ? wp_json_encode($map)       : json_encode($map);
+    $fmap_json = function_exists('wp_json_encode') ? wp_json_encode($field_map) : json_encode($field_map);
+
+    $deps = ['wp-blocks','wp-element','wp-i18n','wp-components','wp-block-editor','wp-editor','wp-dom-ready'];
+    if (!wp_script_is('nowonline-elt-blocks-js','registered')){
+        wp_register_script('nowonline-elt-blocks-js', plugins_url('assets/editor.js', NOWONLINE_ELT_FILE), $deps, $ver, true);
+    }
+    wp_add_inline_script('nowonline-elt-blocks-js', 'window.NOWONLINE_TEMPLATES='.$map_json.';window.NOWONLINE_FIELDS='.$fmap_json.';', 'before');
+    wp_enqueue_script('nowonline-elt-blocks-js');
+
+    if (!wp_style_is('nowonline-elt-blocks-css','registered')){
+        wp_register_style('nowonline-elt-blocks-css', plugins_url('assets/editor.css', NOWONLINE_ELT_FILE), [], $ver);
+    }
+    wp_enqueue_style('nowonline-elt-blocks-css');
+}
+
 }
