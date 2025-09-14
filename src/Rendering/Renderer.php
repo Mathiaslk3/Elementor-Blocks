@@ -30,7 +30,7 @@ final class Renderer
             . '</style>';
     }
 
-    /** Gør URL’er “fornuftige” (http// -> http://, www. -> https://www., osv.) */
+    /** Ret skæve URL’er (http// -> http://, www. -> https://www., m.m.) */
     private static function fix_url(string $u): string
     {
         $u = trim($u);
@@ -90,6 +90,25 @@ final class Renderer
         return $out;
     }
 
+    /** returnerer to maps: [$imgMap, $bgMap] */
+    private static function build_media_maps(array $defs, array $fields): array
+    {
+        $img = $bg = [];
+        foreach ($fields as $k => $v) {
+            $key  = strtolower((string)$k);
+            $type = self::norm_type($defs, $key);
+            if ($type !== 'img' && $type !== 'bg') continue;
+
+            $val = is_array($v) ? (string)($v['url'] ?? '') : (string)$v;
+            $url = esc_url(self::fix_url($val));
+            if ($url === '') continue;
+
+            if ($type === 'img') $img[$key] = $url;
+            else                 $bg[$key]  = $url;
+        }
+        return [$img, $bg];
+    }
+
     public function render($attrs = [], $content = ''): string
     {
         $tid    = isset($attrs['templateId']) ? (int)$attrs['templateId'] : 0;
@@ -102,6 +121,7 @@ final class Renderer
 
         $style = '--nowonline-elt-gap:' . $gap . 'px;';
 
+        // Hent Elementor HTML
         $html = '';
         if (did_action('elementor/loaded') && class_exists('\\Elementor\\Plugin')) {
             $inst = \Elementor\Plugin::$instance;
@@ -175,16 +195,19 @@ final class Renderer
                         $finalUrl, $finalUrl,
                         $inject, ($url !== '' && $blank) ? '1' : '', ($url !== '' && $blank) ? 'true' : 'false',
                     ]);
+
                 } elseif ($type === 'textarea') {
                     $txt = nl2br( esc_html( (string)$v ) );
                     foreach (['[[textarea:' . $key . ']]', '[[' . $key . ']]'] as $tok) {
                         $search[] = $tok; $replace[] = $txt;
                     }
+
                 } elseif ($type === 'rich' || $type === 'wysiwyg') {
                     $html_val = wp_kses_post( (string)$v );
                     foreach (['[[rich:' . $key . ']]', '[[wysiwyg:' . $key . ']]', '[[' . $key . ']]'] as $tok) {
                         $search[] = $tok; $replace[] = $html_val;
                     }
+
                 } else {
                     $val = is_array($v) ? '' : (string)$v;
                     $txt = esc_html($val);
@@ -197,11 +220,11 @@ final class Renderer
             if ($search) $html = str_replace($search, $replace, $html);
         }
 
-        // --- Ny metode: bind links på selve <a> ---
+        // --- Links bundet direkte på <a> ---
         $linkMap = self::build_link_map($defs, $fields);
 
         if (!empty($linkMap)) {
-            // a) <a ... data-now-key="KEY" ...>
+            // a) data-now-key="KEY"
             $html = preg_replace_callback(
                 '~<a\b([^>]*?\s)data-now-key=(["\'])([^"\']+)\2([^>]*)>~i',
                 function ($m) use ($linkMap) {
@@ -223,7 +246,7 @@ final class Renderer
                 $html
             );
 
-            // b) <a class="... now-link-KEY ...">
+            // b) class="... now-link-KEY ..."
             $html = preg_replace_callback(
                 '~<a\b([^>]*class=(["\'][^"\']*?\bnow-link-([a-z0-9_-]+)\b[^"\']*\2)[^>]*)>~i',
                 function ($m) use ($linkMap) {
@@ -245,7 +268,7 @@ final class Renderer
                 $html
             );
 
-            // c) <a id="now-link-KEY">  (Elementor Button → “Button ID”)
+            // c) id="now-link-KEY" (Button ID)
             $html = preg_replace_callback(
                 '~<a\b([^>]*\sid=(["\'])now-link-([a-z0-9_-]+)\2[^>]*)>~i',
                 function ($m) use ($linkMap) {
@@ -263,6 +286,89 @@ final class Renderer
                     $finalUrl = $url !== '' ? $url : '#';
                     $inject   = ($url !== '' && $blank) ? ' target="_blank" rel="noopener noreferrer"' : '';
                     return '<a ' . trim($attrs) . ' href="' . esc_attr($finalUrl) . '"' . $inject . '>';
+                },
+                $html
+            );
+        }
+
+        // --- Billeder & baggrunde bundet direkte i markup ---
+        [$imgMap, $bgMap] = self::build_media_maps($defs, $fields);
+
+        if (!empty($imgMap)) {
+            // <img ... data-now-img="KEY" ...>
+            $html = preg_replace_callback(
+                '~<img\b([^>]*?\s)data-now-img=(["\'])([^"\']+)\2([^>]*)>~i',
+                function ($m) use ($imgMap) {
+                    $attrs = trim($m[1] . ' ' . $m[4]);
+                    $key   = strtolower($m[3]);
+                    $url   = $imgMap[$key] ?? '';
+                    if ($url === '') return $m[0];
+
+                    // fjern eksisterende src/srcset/sizes
+                    $attrs = preg_replace('/\s+(src|srcset|sizes)=(["\']).*?\2/i', '', $attrs);
+                    return '<img ' . trim($attrs) . ' src="' . esc_attr($url) . '">';
+                },
+                $html
+            );
+
+            // <img class="... now-img-KEY ...">
+            $html = preg_replace_callback(
+                '~<img\b([^>]*class=(["\'][^"\']*?\bnow-img-([a-z0-9_-]+)\b[^"\']*\2)[^>]*)>~i',
+                function ($m) use ($imgMap) {
+                    $attrs = $m[1];
+                    $key   = strtolower($m[3]);
+                    $url   = $imgMap[$key] ?? '';
+                    if ($url === '') return $m[0];
+
+                    $attrs = preg_replace('/\s+(src|srcset|sizes)=(["\']).*?\2/i', '', $attrs);
+                    return '<img ' . trim($attrs) . ' src="' . esc_attr($url) . '">';
+                },
+                $html
+            );
+        }
+
+        if (!empty($bgMap)) {
+            // data-now-bg="KEY" på vilkårlige tags
+            $html = preg_replace_callback(
+                '~<([a-z0-9:_-]+)\b([^>]*?\s)data-now-bg=(["\'])([^"\']+)\3([^>]*)>~i',
+                function ($m) use ($bgMap) {
+                    $tag   = $m[1];
+                    $attrs = trim($m[2] . ' ' . $m[5]);
+                    $key   = strtolower($m[4]);
+                    $url   = $bgMap[$key] ?? '';
+                    if ($url === '') return $m[0];
+
+                    if (preg_match('/\sstyle=(["\'])(.*?)\1/i', $attrs, $sm)) {
+                        $style = preg_replace('/background-image\s*:\s*[^;]+;?/i', '', $sm[2]);
+                        $new   = trim(rtrim($style, '; ') . '; background-image:url(' . esc_url($url) . ')');
+                        $attrs = str_replace($sm[0], ' style="' . esc_attr($new) . '"', $attrs);
+                    } else {
+                        $attrs .= ' style="background-image:url(' . esc_attr($url) . ')"';
+                    }
+                    return '<' . $tag . ' ' . trim($attrs) . '>';
+                },
+                $html
+            );
+
+            // class="... now-bg-KEY ..."
+            $html = preg_replace_callback(
+                '~<([a-z0-9:_-]+)\b([^>]*class=(["\'][^"\']*?\bnow-bg-([a-z0-9_-]+)\b[^"\']*\3)[^>]*)>~i',
+                function ($m) use ($bgMap) {
+                    $tag   = $m[1];
+                    $attrs = $m[2];
+                    $key   = strtolower($m[4]);
+                    $url   = $bgMap[$key] ?? '';
+                    if ($url === '') return $m[0];
+
+                    if (preg_match('/\sstyle=(["\'])(.*?)\1/i', $attrs, $sm)) {
+                        $style = preg_replace('/background-image\s*:\s*[^;]+;?/i', '', $sm[2]);
+                        $new   = trim(rtrim($style, '; ') . '; background-image:url(' . esc_url($url) . ')');
+                        $attrs = str_replace($sm[0], ' style="' . esc_attr($new) . '"', $attrs);
+                    } else {
+                        $attrs .= ' style="background-image:url(' . esc_attr($url) . ')"';
+                    }
+
+                    return '<' . $tag . ' ' . trim($attrs) . '>';
                 },
                 $html
             );

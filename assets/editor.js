@@ -3,6 +3,7 @@
 (function () {
   "use strict";
 
+  // --- WP shims --------------------------------------------------------------
   var WP = window.wp || {};
   var __ =
     (WP.i18n && WP.i18n.__) ||
@@ -22,7 +23,7 @@
   var B = WP.blockEditor || WP.editor || {};
   var Blocks = WP.blocks || {};
   var data = WP.data || {};
-  var HAS_USESELECT = !!(data && typeof data.useSelect === "function"); // <— vigtig
+  var HAS_USESELECT = !!(data && typeof data.useSelect === "function");
 
   var PanelBody =
     C.PanelBody ||
@@ -56,12 +57,6 @@
         p.label || ""
       );
     };
-  var RangeControl = C.RangeControl;
-  function RangeOrNumber(props) {
-    return RangeControl
-      ? el(RangeControl, props)
-      : el(TextControl, Object.assign({}, props, { type: "number" }));
-  }
 
   var InspectorControls = B.InspectorControls || "div";
   var MediaUpload = B.MediaUpload;
@@ -74,7 +69,7 @@
           return {};
         };
 
-  // Hooks
+  // --- React hooks -----------------------------------------------------------
   var useEffect = (WP.element && WP.element.useEffect) || function () {};
   var useRef =
     (WP.element && WP.element.useRef) ||
@@ -88,15 +83,16 @@
     };
   var useSelect = HAS_USESELECT ? data.useSelect : null;
 
-  // Classic editor (fallback for [[rich]])
+  // Classic editor / TinyMCE API
   var OldEditor = (WP && (WP.editor || WP.oldEditor)) || null;
 
-  // LinkControl (fallback widget)
+  // LinkControl (fallback)
   var LinkControl =
     (B && (B.__experimentalLinkControl || B.LinkControl)) ||
     (C && C.__experimentalLinkControl) ||
     null;
 
+  // --------------------------------------------------------------------------
   function Icon() {
     return el(
       "svg",
@@ -125,35 +121,34 @@
     return null;
   }
 
-  // ---- URL normalisering (klient) ----
+  // ---- URL normalisering (klient) ------------------------------------------
   function fixUrl(u) {
     u = (u || "").trim();
     if (!u) return u;
 
-    // Protokol-relativ //domain -> https://domain
+    // //domain -> https://domain
     if (u.indexOf("//") === 0) u = "https:" + u;
 
-    // Ret manglende kolon: http// -> http://  |  https// -> https://
-    u = u.replace(/^http\/\/?/i, "http://").replace(/^https\/\/?/i, "https://");
+    // http// -> http://  |  https// -> https://
+    u = u.replace(/^http\/\//i, "http://").replace(/^https\/\//i, "https://");
 
-    // Fold dublet skema: http://http://..., http://https://...
+    // Dubleret schema
     u = u.replace(/^(https?:\/\/)(https?:\/\/)/i, "$1");
-    u = u.replace(/^(https?:\/\/)https?:\/\//i, "$1");
 
-    // Fjern ekstra slashes efter skema
+    // Fjern ekstra slashes efter schema
     u = u.replace(/^(https?:\/\/)\/+/i, "$1");
 
-    // www. uden skema -> https://
+    // www. uden schema
     if (/^www\./i.test(u)) u = "https://" + u;
 
-    // Hvis det ligner et domæne uden skema -> https://
+    // Ligner domæne uden schema
     if (!/^[a-z][a-z0-9+.\-]*:\/\//i.test(u) && /^[^\/\s]+\.[^\s]+/.test(u)) {
       u = "https://" + u;
     }
     return u;
   }
 
-  // --- typer ---
+  // --- type helpers ----------------------------------------------------------
   function t(def) {
     return (def && def.type ? String(def.type) : "").toLowerCase().trim();
   }
@@ -203,7 +198,7 @@
     return n === "text" || n === "p" || /^h[1-6]$/.test(n) || !n;
   }
 
-  // --- image field ---
+  // --- Image field -----------------------------------------------------------
   function ImageField(block, def) {
     var url = (block.attributes.fields || {})[def.key] || "";
     function onSelect(media) {
@@ -255,7 +250,7 @@
     );
   }
 
-  // --- gallery field ---
+  // --- Gallery field ---------------------------------------------------------
   function GalleryField(block, def) {
     var value = (block.attributes.fields || {})[def.key] || [];
     if (!Array.isArray(value)) value = [];
@@ -334,7 +329,7 @@
     );
   }
 
-  // --- PagePicker for URL fields (kun når useSelect findes) ---
+  // --- PagePicker for URL fields (kun når hook findes) ----------------------
   function PagePicker(p) {
     var block = p.block,
       def = p.def,
@@ -483,6 +478,7 @@
     );
   }
 
+  // --- Blok-registrering -----------------------------------------------------
   domReady(function () {
     try {
       var MAP = Array.isArray(window.NOWONLINE_TEMPLATES)
@@ -542,6 +538,7 @@
               )
             );
 
+            // Feltdefinitioner for valgt template
             var defs = getFieldDefs(templateId) || [];
             var richDefs = defs.filter(isRich);
             var textDefs = defs.filter(function (d) {
@@ -562,6 +559,7 @@
               );
             }
 
+            // Tekst (korte)
             var textInputs = textDefs
               .map(function (def) {
                 var value = fields[def.key] || "";
@@ -590,7 +588,7 @@
                 })
               );
 
-            // URL inputs – PagePicker hvis hook findes, ellers LinkControl/TextControl
+            // URL inputs – PagePicker hvis hook findes, ellers fallback
             function UrlInput(def) {
               if (HAS_USESELECT)
                 return el(PagePicker, { key: def.key, block: props, def: def });
@@ -658,55 +656,80 @@
               return GalleryField(props, def);
             });
 
-            // Rich (TinyMCE hvis muligt, ellers RichText)
+            // --- Rich (TinyMCE hvis muligt, ellers RichText) -----------------
             function TinyMCEField(def) {
               var fieldKey = def.key;
-              var initial = (fields && fields[fieldKey]) || "";
-              var idRef = useRef(
-                ("nowelt-" + fieldKey).replace(/[^a-z0-9_\-]/gi, "_")
+              var initial =
+                (props.attributes.fields &&
+                  props.attributes.fields[fieldKey]) ||
+                "";
+
+              function safe(s) {
+                return String(s || "").replace(/[^a-z0-9_-]/gi, "");
+              }
+              var instId = safe(
+                props.clientId || Math.random().toString(36).slice(2, 8)
               );
+              var uniqueId = "nowelt-" + instId + "-" + safe(fieldKey);
+
+              var idRef = useRef(uniqueId);
               var taRef = useRef(null);
 
-              useEffect(function () {
-                if (!OldEditor || !OldEditor.initialize) return;
-                try {
-                  OldEditor.remove(idRef.current);
-                } catch (e) {}
-                OldEditor.initialize(idRef.current, {
-                  tinymce: {
-                    wpautop: true,
-                    menubar: false,
-                    toolbar1:
-                      "formatselect,bold,italic,link,bullist,numlist,blockquote,alignleft,aligncenter,alignright,undo,redo",
-                  },
-                  quicktags: true,
-                  mediaButtons: false,
-                });
-                function sync() {
-                  var ed = window.tinymce && window.tinymce.get(idRef.current);
-                  var val = ed
-                    ? ed.getContent()
-                    : taRef.current
-                    ? taRef.current.value
-                    : "";
-                  var next = Object.assign({}, fields);
-                  next[fieldKey] = val || "";
-                  props.setAttributes({ fields: next });
-                }
-                var wait = setInterval(function () {
-                  var ed = window.tinymce && window.tinymce.get(idRef.current);
-                  if (ed) {
-                    clearInterval(wait);
-                    ed.on("change keyup input", sync);
-                  }
-                }, 50);
-                return function () {
+              useEffect(
+                function () {
+                  if (!OldEditor || !OldEditor.initialize) return;
+
                   try {
                     OldEditor.remove(idRef.current);
                   } catch (e) {}
-                  clearInterval(wait);
-                };
-              }, []);
+
+                  OldEditor.initialize(idRef.current, {
+                    tinymce: {
+                      wpautop: true,
+                      menubar: false,
+                      toolbar1:
+                        "formatselect,bold,italic,link,bullist,numlist,blockquote,alignleft,aligncenter,alignright,undo,redo",
+                    },
+                    quicktags: true,
+                    mediaButtons: false,
+                  });
+
+                  var ed, poll;
+                  function sync() {
+                    var val =
+                      ed && typeof ed.getContent === "function"
+                        ? ed.getContent()
+                        : taRef.current
+                        ? taRef.current.value
+                        : "";
+                    var next = Object.assign({}, props.attributes.fields || {});
+                    next[fieldKey] = val || "";
+                    props.setAttributes({ fields: next });
+                  }
+
+                  poll = setInterval(function () {
+                    ed = window.tinymce && window.tinymce.get(idRef.current);
+                    if (ed) {
+                      clearInterval(poll);
+                      if (initial) ed.setContent(initial);
+                      ed.on("change keyup input setcontent", sync);
+                    }
+                  }, 50);
+
+                  if (taRef.current)
+                    taRef.current.addEventListener("input", sync);
+
+                  return function () {
+                    try {
+                      OldEditor.remove(idRef.current);
+                    } catch (e) {}
+                    if (taRef.current)
+                      taRef.current.removeEventListener("input", sync);
+                    clearInterval(poll);
+                  };
+                },
+                [props.clientId, props.attributes.templateId, fieldKey]
+              );
 
               return el(
                 "div",
@@ -719,6 +742,7 @@
                 })
               );
             }
+
             var richInputs =
               OldEditor && OldEditor.initialize
                 ? richDefs.map(TinyMCEField)
@@ -755,6 +779,7 @@
                     ),
                   ];
 
+            // --- UI ----------------------------------------------------------
             function ContentTab() {
               var pickerRow = el(
                 "div",
@@ -862,6 +887,7 @@
         });
       }
 
+      // Variationer (en pr. Elementor-template)
       if (
         Blocks &&
         typeof Blocks.registerBlockVariation === "function" &&
