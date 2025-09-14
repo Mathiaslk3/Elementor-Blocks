@@ -11,7 +11,7 @@ final class PlaceholderScanner
      * Inkluderer også gallery/galleri.
      */
     private const TOKEN_PATTERN =
-        '/\[\[(?:(h[1-6]|p|text|textarea|rich|wysiwyg|img|bg|url|gallery|galleri):)?([a-zA-Z0-9_\-]+)\]\]/i';
+        '/\[\[(?:(h[1-6]|p|text|textarea|rich|wysiwyg|img|image|bg|url|gallery|galleri):)?([a-zA-Z0-9_\-]+)\]\]/i';
 
     /** data-now-key="key" (", ' eller &quot;) → URL */
     private const ATTR_KEY_PATTERN =
@@ -20,12 +20,13 @@ final class PlaceholderScanner
     /** class="... now-link-key ..." → URL */
     private const CLASS_LINK_PATTERN = '/\bnow-link-([a-z0-9_\-]+)\b/i';
 
-    /** data-now-img="key" / data-now-bg="key" → billede */
-    private const ATTR_IMG_PATTERN =
-        '/\bdata-now-(?:img|image|bg)\s*=\s*(?:"|\'|&quot;)([a-zA-Z0-9_\-]+)(?:"|\'|&quot;)/i';
+    /** data-now-img="key" / data-now-image="key" / data-now-bg="key" → img/bg (bevar typen) */
+    private const ATTR_MEDIA_PATTERN =
+        '/\bdata-now-(img|image|bg)\s*=\s*(?:"|\'|&quot;)([a-zA-Z0-9_\-]+)(?:"|\'|&quot;)/i';
 
-    /** class="... now-img-key ..." / "now-bg-key" → billede */
-    private const CLASS_IMG_PATTERN = '/\bnow-(?:img|image|bg)-([a-z0-9_\-]+)\b/i';
+    /** class="... now-img-key ..." / "now-image-key" / "now-bg-key" → img/bg (bevar typen) */
+    private const CLASS_MEDIA_PATTERN =
+        '/\bnow-(img|image|bg)-([a-z0-9_\-]+)\b/i';
 
     /**
      * Scan Elementor’s data og returnér key => type.
@@ -43,7 +44,7 @@ final class PlaceholderScanner
             if (is_array($json)) {
                 $this->scanNode($json, $out);
             }
-        } else if (function_exists('get_post')) {
+        } elseif (function_exists('get_post')) {
             // fallback: scan post_content hvis ingen meta
             $p = get_post($post_id);
             if ($p && isset($p->post_content)) {
@@ -66,10 +67,14 @@ final class PlaceholderScanner
         // aliaser
         if ($t === 'wysiwyg') $t = 'rich';
         if ($t === 'galleri') $t = 'gallery';
+        if ($t === 'image')   $t = 'img';
         if (in_array($t, ['h1','h2','h3','h4','h5','h6','p','text'], true)) $t = 'text';
 
+        // hvis type mangler, gæt ud fra nøgle
         if ($t === '') {
             if (in_array($k, ['titel','undertitel','beskrivelse'], true)) return 'rich';
+            if ($k === 'billede')  return 'img';
+            if ($k === 'galleri')  return 'gallery';
             if (preg_match('#^(url|link|href)$#i', $k)) return 'url';
             return 'text';
         }
@@ -88,6 +93,10 @@ final class PlaceholderScanner
         // Opgrader fra text til mere specifik
         if ($out[$k] === 'text' && in_array($t, ['url','rich','img','bg','gallery','textarea'], true)) {
             $out[$k] = $t;
+        }
+        // Hvis vi allerede havde img og møder bg (eller omvendt) – lad den ny være mere specifik
+        if (($out[$k] === 'img' && $t === 'bg') || ($out[$k] === 'bg' && $t === 'img')) {
+            // behold den første (ingen ændring); begge er “specifikke”
         }
     }
 
@@ -116,12 +125,20 @@ final class PlaceholderScanner
             foreach ($cm as $mm) self::add($out, $mm[1], 'url');
         }
 
-        // 3) Billeder via data-now-img/bg / now-img-KEY / now-bg-KEY
-        if (preg_match_all(self::ATTR_IMG_PATTERN,  $node, $im, PREG_SET_ORDER)) {
-            foreach ($im as $mm) self::add($out, $mm[1], 'img');
+        // 3) Media: img/bg via data-now-XXX og klasser
+        if (preg_match_all(self::ATTR_MEDIA_PATTERN, $node, $im, PREG_SET_ORDER)) {
+            foreach ($im as $mm) {
+                $kind = strtolower($mm[1]); // img | image | bg
+                $key  = $mm[2];
+                self::add($out, $key, $kind === 'bg' ? 'bg' : 'img');
+            }
         }
-        if (preg_match_all(self::CLASS_IMG_PATTERN, $node, $gm, PREG_SET_ORDER)) {
-            foreach ($gm as $mm) self::add($out, $mm[1], 'img');
+        if (preg_match_all(self::CLASS_MEDIA_PATTERN, $node, $gm, PREG_SET_ORDER)) {
+            foreach ($gm as $mm) {
+                $kind = strtolower($mm[1]); // img | image | bg
+                $key  = $mm[2];
+                self::add($out, $key, $kind === 'bg' ? 'bg' : 'img');
+            }
         }
     }
 
