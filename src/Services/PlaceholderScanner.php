@@ -2,16 +2,20 @@
 // File: src/Services/PlaceholderScanner.php
 namespace NowOnline\EltBlocks\Services;
 
-if ( ! defined('ABSPATH') ) { exit; }
+if (!defined('ABSPATH')) { exit; }
 
 final class PlaceholderScanner
 {
-    /** [[type:key]] tokens (type optional) */
-    private const TOKEN_PATTERN = '/\[\[(?:(h[1-6]|p|text|textarea|rich|wysiwyg|img|bg|url):)?([a-zA-Z0-9_\-]+)\]\]/';
+    /**
+     * [[type:key]]  – type er valgfri.
+     * Inkluderer også gallery/galleri og er case-insensitive.
+     */
+    private const TOKEN_PATTERN =
+        '/\[\[(?:(h[1-6]|p|text|textarea|rich|wysiwyg|img|bg|url|gallery|galleri):)?([a-zA-Z0-9_\-]+)\]\]/i';
 
-    /** data-now-key="key"  (tillad både ", ' og &quot;) */
+    /** data-now-key="key"  (tillad ", ' og &quot;) */
     private const ATTR_KEY_PATTERN =
-        '/data-now-key\s*=\s*(?:"|\'|&quot;)([a-zA-Z0-9_\-]+)(?:"|\'|&quot;)/i';
+        '/\bdata-now-key\s*=\s*(?:"|\'|&quot;)([a-zA-Z0-9_\-]+)(?:"|\'|&quot;)/i';
 
     /** class="... now-link-key ..." */
     private const CLASS_LINK_PATTERN = '/\bnow-link-([a-z0-9_\-]+)\b/i';
@@ -25,56 +29,65 @@ final class PlaceholderScanner
         $out = [];
 
         $raw = get_post_meta($post_id, '_elementor_data', true);
-        if ( ! $raw && function_exists('get_post') ) {
+
+        // fallback: scan post_content hvis data ikke findes
+        if (!$raw && function_exists('get_post')) {
             $p = get_post($post_id);
             if ($p && isset($p->post_content)) {
-                $this->scanNode((string)$p->post_content, $out);
+                $this->scanNode((string) $p->post_content, $out);
             }
             return $out;
         }
 
-        $json = is_array($raw) ? $raw : json_decode(is_string($raw) ? wp_unslash((string)$raw) : '', true);
-        if ( ! is_array($json) ) { return $out; }
+        // _elementor_data er oftest en JSON-string; håndter også array
+        $json = is_array($raw) ? $raw : json_decode(is_string($raw) ? wp_unslash((string) $raw) : '', true);
+        if (!is_array($json)) { return $out; }
 
         $this->scanNode($json, $out);
         return $out;
     }
 
-    /** Hjælpere */
+    /** Normaliser type + aliaser */
     private static function normalizeType(?string $type, string $key): string
     {
-        $type = strtolower((string)$type);
-        $key  = strtolower($key);
+        $t = strtolower((string) $type);
+        $k = strtolower($key);
 
-        if ($type) return $type;
+        // map aliaser
+        if ($t === 'wysiwyg') $t = 'rich';
+        if ($t === 'galleri') $t = 'gallery';
+        if ($t === 'h1' || $t === 'h2' || $t === 'h3' || $t === 'h4' || $t === 'h5' || $t === 'h6' || $t === 'p' || $t === 'text') {
+            $t = 'text';
+        }
 
-        // Nogle Danske nøgleord vi ved er rich
-        if (in_array($key, ['titel','undertitel','beskrivelse'], true)) return 'rich';
+        // ingen type? – gætværdi
+        if ($t === '') {
+            // kendte danske nøgler som skal være rich
+            if (in_array($k, ['titel','undertitel','beskrivelse'], true)) return 'rich';
+            // link-agtige nøgler
+            if (preg_match('#^(url|link|href)$#i', $k)) return 'url';
+            return 'text';
+        }
 
-        // Hvis navnet ligner et link-felt, så kald det url
-        if (preg_match('#^(url|link|href)$#i', $key)) return 'url';
-
-        return 'text';
+        return $t;
     }
 
+    /** Tilføj/”opgrader” registreret type for en nøgle */
     private static function add(array &$out, string $key, string $type): void
     {
-        $key  = strtolower($key);
-        $type = strtolower($type);
-        if ($key === '') return;
+        $k = strtolower($key);
+        $t = strtolower($type);
+        if ($k === '') return;
 
-        if (!isset($out[$key])) {
-            $out[$key] = $type;
-            return;
-        }
+        if (!isset($out[$k])) { $out[$k] = $t; return; }
 
-        // “Opgrader” text -> url/rich hvis vi opdager en mere specifik type
-        if ($out[$key] === 'text' && in_array($type, ['url','rich','img','bg','gallery','textarea'], true)) {
-            $out[$key] = $type;
+        // Opgrader fra text til en mere specifik type
+        if ($out[$k] === 'text' && in_array($t, ['url','rich','img','bg','gallery','textarea'], true)) {
+            $out[$k] = $t;
         }
     }
 
-    /** Rekursiv gennemgang af arrays/strings; udfylder $out by-ref */
+    /** Rekursiv gennemgang; udfylder $out by-ref */
     private function scanNode($node, array &$out): void
     {
         if (is_array($node)) {
