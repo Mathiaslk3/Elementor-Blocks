@@ -2,7 +2,7 @@
 /**
  * Plugin Name: NowOnline – Elementor Blocks
  * Description: Allow-list Elementor templates as Gutenberg block variations, with typed placeholders ([[text]], [[rich]], [[img]], [[bg]], [[url]], [[p]], [[h1]]..[[h6]]). Includes thumbnails, field mapping and diagnostics.
- * Version: 2.12.6
+ * Version: 2.12.7
  * Author: NowOnline
  * License: GPL-2.0-or-later
  */

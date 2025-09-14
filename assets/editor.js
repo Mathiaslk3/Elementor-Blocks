@@ -22,6 +22,7 @@
   var B = WP.blockEditor || WP.editor || {};
   var Blocks = WP.blocks || {};
   var data = WP.data || {};
+  var HAS_USESELECT = !!(data && typeof data.useSelect === "function"); // <— vigtig
 
   var PanelBody =
     C.PanelBody ||
@@ -37,44 +38,6 @@
     C.TextareaControl ||
     function (p) {
       return el("textarea", Object.assign({ rows: 4 }, p));
-    };
-  var ToggleControl =
-    C.ToggleControl ||
-    function (p) {
-      return el(
-        "label",
-        {},
-        el("input", {
-          type: "checkbox",
-          checked: !!p.checked,
-          onChange: function (e) {
-            p.onChange && p.onChange(!!e.target.checked);
-          },
-        }),
-        " ",
-        p.label || ""
-      );
-    };
-  var SelectControl =
-    C.SelectControl ||
-    function (p) {
-      var opts = (p.options || []).map(function (o) {
-        return el("option", { value: o.value }, o.label);
-      });
-      return el(
-        "label",
-        {},
-        el("span", { className: "now-elt-label" }, p.label || ""),
-        el(
-          "select",
-          Object.assign({}, p, {
-            onChange: function (e) {
-              p.onChange && p.onChange(e.target.value);
-            },
-          }),
-          opts
-        )
-      );
     };
   var CheckboxControl =
     C.CheckboxControl ||
@@ -111,7 +74,7 @@
           return {};
         };
 
-  // React hooks
+  // Hooks
   var useEffect = (WP.element && WP.element.useEffect) || function () {};
   var useRef =
     (WP.element && WP.element.useRef) ||
@@ -123,16 +86,12 @@
     function (v) {
       return [v, function () {}];
     };
-  var useSelect =
-    (data && data.useSelect) ||
-    function () {
-      return null;
-    };
+  var useSelect = HAS_USESELECT ? data.useSelect : null;
 
-  // Classic editor / TinyMCE API (til [[rich]] fallback)
+  // Classic editor (fallback for [[rich]])
   var OldEditor = (WP && (WP.editor || WP.oldEditor)) || null;
 
-  // LinkControl (fallback)
+  // LinkControl (fallback widget)
   var LinkControl =
     (B && (B.__experimentalLinkControl || B.LinkControl)) ||
     (C && C.__experimentalLinkControl) ||
@@ -161,10 +120,37 @@
       ? window.NOWONLINE_TEMPLATES
       : [];
     id = parseInt(id || 0, 10);
-    for (var i = 0; i < list.length; i++) {
+    for (var i = 0; i < list.length; i++)
       if (parseInt(list[i].id, 10) === id) return list[i];
-    }
     return null;
+  }
+
+  // ---- URL normalisering (klient) ----
+  function fixUrl(u) {
+    u = (u || "").trim();
+    if (!u) return u;
+
+    // Protokol-relativ //domain -> https://domain
+    if (u.indexOf("//") === 0) u = "https:" + u;
+
+    // Ret manglende kolon: http// -> http://  |  https// -> https://
+    u = u.replace(/^http\/\/?/i, "http://").replace(/^https\/\/?/i, "https://");
+
+    // Fold dublet skema: http://http://..., http://https://...
+    u = u.replace(/^(https?:\/\/)(https?:\/\/)/i, "$1");
+    u = u.replace(/^(https?:\/\/)https?:\/\//i, "$1");
+
+    // Fjern ekstra slashes efter skema
+    u = u.replace(/^(https?:\/\/)\/+/i, "$1");
+
+    // www. uden skema -> https://
+    if (/^www\./i.test(u)) u = "https://" + u;
+
+    // Hvis det ligner et domæne uden skema -> https://
+    if (!/^[a-z][a-z0-9+.\-]*:\/\//i.test(u) && /^[^\/\s]+\.[^\s]+/.test(u)) {
+      u = "https://" + u;
+    }
+    return u;
   }
 
   // --- typer ---
@@ -217,19 +203,19 @@
     return n === "text" || n === "p" || /^h[1-6]$/.test(n) || !n;
   }
 
-  // --- enkelt billede ---
-  function ImageField(props, def) {
-    var url = (props.attributes.fields || {})[def.key] || "";
+  // --- image field ---
+  function ImageField(block, def) {
+    var url = (block.attributes.fields || {})[def.key] || "";
     function onSelect(media) {
       var u = (media && media.url) || "";
-      var next = Object.assign({}, props.attributes.fields || {});
+      var next = Object.assign({}, block.attributes.fields || {});
       next[def.key] = u;
-      props.setAttributes({ fields: next });
+      block.setAttributes({ fields: next });
     }
     function clear() {
-      var next = Object.assign({}, props.attributes.fields || {});
+      var next = Object.assign({}, block.attributes.fields || {});
       delete next[def.key];
-      props.setAttributes({ fields: next });
+      block.setAttributes({ fields: next });
     }
     var preview = url
       ? el("img", { src: url, className: "now-elt-imgprev", alt: "" })
@@ -269,9 +255,9 @@
     );
   }
 
-  // --- galleri ---
-  function GalleryField(props, def) {
-    var value = (props.attributes.fields || {})[def.key] || [];
+  // --- gallery field ---
+  function GalleryField(block, def) {
+    var value = (block.attributes.fields || {})[def.key] || [];
     if (!Array.isArray(value)) value = [];
     function onSelect(items) {
       var urls = [];
@@ -282,14 +268,14 @@
           })
           .filter(Boolean);
       else if (items && items.url) urls = [items.url];
-      var next = Object.assign({}, props.attributes.fields || {});
+      var next = Object.assign({}, block.attributes.fields || {});
       next[def.key] = urls;
-      props.setAttributes({ fields: next });
+      block.setAttributes({ fields: next });
     }
     function clear() {
-      var next = Object.assign({}, props.attributes.fields || {});
+      var next = Object.assign({}, block.attributes.fields || {});
       delete next[def.key];
-      props.setAttributes({ fields: next });
+      block.setAttributes({ fields: next });
     }
     var thumbs = value.length
       ? el(
@@ -310,6 +296,7 @@
           { className: "now-elt-imgprev now-elt-noimg" },
           __("Ingen billeder i galleriet", "nowonline")
         );
+
     return el(
       "div",
       { key: def.key, className: "now-elt-sec-item" },
@@ -347,10 +334,13 @@
     );
   }
 
-  // --- NY: PagePicker til URL felter ---
-  function PagePicker(props, def) {
-    var fieldKey = def.key;
-    var current = (props.attributes.fields || {})[fieldKey];
+  // --- PagePicker for URL fields (kun når useSelect findes) ---
+  function PagePicker(p) {
+    var block = p.block,
+      def = p.def,
+      fieldKey = def.key;
+
+    var current = (block.attributes.fields || {})[fieldKey];
     var currObj =
       current && typeof current === "object"
         ? current
@@ -375,43 +365,43 @@
       };
     }, []);
 
-    var _useState = useState(""),
-      search = _useState[0],
-      setSearch = _useState[1];
+    var _s = useState(""),
+      search = _s[0],
+      setSearch = _s[1];
 
     var pages = sel && sel.pages ? sel.pages : [];
     if (search && pages.length) {
-      var s = search.toLowerCase();
-      pages = pages.filter(function (p) {
-        var t = p.title && p.title.rendered ? p.title.rendered : "";
-        return String(t).toLowerCase().indexOf(s) !== -1;
+      var needle = search.toLowerCase();
+      pages = pages.filter(function (pg) {
+        var t = pg.title && pg.title.rendered ? pg.title.rendered : "";
+        return String(t).toLowerCase().indexOf(needle) !== -1;
       });
     }
 
-    function pickPage(p) {
-      var next = Object.assign({}, props.attributes.fields || {});
+    function pickPage(pg) {
+      var next = Object.assign({}, block.attributes.fields || {});
       next[fieldKey] = {
-        url: p.link || p.guid?.rendered || "",
-        id: p.id,
+        url: fixUrl(pg.link || (pg.guid && pg.guid.rendered) || ""),
+        id: pg.id,
         type: "page",
         newTab: !!currObj.newTab,
-        title: (p.title && p.title.rendered) || "",
+        title: (pg.title && pg.title.rendered) || "",
       };
-      props.setAttributes({ fields: next });
+      block.setAttributes({ fields: next });
     }
     function setNewTab(v) {
-      var next = Object.assign({}, props.attributes.fields || {});
+      var next = Object.assign({}, block.attributes.fields || {});
       next[fieldKey] = Object.assign({}, currObj, { newTab: !!v });
-      props.setAttributes({ fields: next });
+      block.setAttributes({ fields: next });
     }
     function setManual(v) {
-      var next = Object.assign({}, props.attributes.fields || {});
+      var next = Object.assign({}, block.attributes.fields || {});
       next[fieldKey] = {
-        url: v || "",
+        url: fixUrl(v || ""),
         type: "external",
         newTab: !!currObj.newTab,
       };
-      props.setAttributes({ fields: next });
+      block.setAttributes({ fields: next });
     }
 
     var list = el(
@@ -426,16 +416,16 @@
           padding: "6px",
         },
       },
-      pages.map(function (p) {
-        var t = p.title && p.title.rendered ? p.title.rendered : "#" + p.id;
-        var active = currObj && currObj.id === p.id;
+      pages.map(function (pg) {
+        var t = pg.title && pg.title.rendered ? pg.title.rendered : "#" + pg.id;
+        var active = currObj && currObj.id === pg.id;
         return el(
           "button",
           {
-            key: p.id,
+            key: pg.id,
             type: "button",
             onClick: function () {
-              pickPage(p);
+              pickPage(pg);
             },
             className: "button " + (active ? "is-primary" : "is-secondary"),
             style: {
@@ -445,7 +435,7 @@
               marginBottom: "6px",
             },
           },
-          t
+          String(t).replace(/<[^>]*>/g, "")
         );
       })
     );
@@ -575,10 +565,11 @@
             var textInputs = textDefs
               .map(function (def) {
                 var value = fields[def.key] || "";
-                return el(TextControl, {
+                return el(TextareaControl, {
                   key: def.key,
                   label: labelFor(def),
                   value: value,
+                  rows: 3,
                   onChange: function (v) {
                     setField(def.key, v);
                   },
@@ -599,46 +590,63 @@
                 })
               );
 
-            // Sider/URL – brug PagePicker hvor muligt, ellers LinkControl fallback
+            // URL inputs – PagePicker hvis hook findes, ellers LinkControl/TextControl
             function UrlInput(def) {
-              if (useSelect && data && data.select) {
-                return el(
-                  PagePicker,
-                  Object.assign(
-                    { key: def.key },
-                    { props: props, def: def, attributes: props.attributes }
-                  )
-                );
-              }
-              // Fallback
-              var value =
-                (fields[def.key] && fields[def.key].url) ||
-                fields[def.key] ||
-                "";
+              if (HAS_USESELECT)
+                return el(PagePicker, { key: def.key, block: props, def: def });
+
+              var val = fields[def.key];
+              var curr =
+                val && typeof val === "object"
+                  ? val
+                  : { url: val || "", newTab: false, type: "external" };
               return el(
                 "div",
                 { key: def.key, className: "now-elt-sec-item" },
                 el("div", { className: "now-elt-label" }, labelFor(def)),
                 LinkControl
                   ? el(LinkControl, {
-                      value: { url: value },
+                      value: { url: curr.url || "" },
                       onChange: function (next) {
                         var url =
                           typeof next === "string"
                             ? next
                             : (next && next.url) || "";
-                        setField(def.key, { url: url, newTab: false });
+                        var newTab = !!(
+                          next &&
+                          (next.opensInNewTab ||
+                            next.newTab ||
+                            next.target === "_blank")
+                        );
+                        setField(def.key, { url: fixUrl(url), newTab: newTab });
                       },
                       showInitialSuggestions: true,
                       withCreateSuggestion: false,
                     })
                   : el(TextControl, {
                       type: "url",
-                      value: value,
+                      value: curr.url || "",
                       onChange: function (v) {
-                        setField(def.key, { url: v, newTab: false });
+                        setField(def.key, {
+                          url: fixUrl(v || ""),
+                          newTab: !!curr.newTab,
+                        });
                       },
-                    })
+                    }),
+                el(
+                  "div",
+                  { style: { marginTop: "6px" } },
+                  el(CheckboxControl, {
+                    label: __("Åbn i ny fane", "nowonline"),
+                    checked: !!curr.newTab,
+                    onChange: function (v) {
+                      setField(
+                        def.key,
+                        Object.assign({}, curr, { newTab: !!v })
+                      );
+                    },
+                  })
+                )
               );
             }
             var linkInputs = urlDefs.map(UrlInput);
@@ -650,7 +658,7 @@
               return GalleryField(props, def);
             });
 
-            // Rich (TinyMCE hvis tilgængelig, ellers RichText)
+            // Rich (TinyMCE hvis muligt, ellers RichText)
             function TinyMCEField(def) {
               var fieldKey = def.key;
               var initial = (fields && fields[fieldKey]) || "";
@@ -658,6 +666,7 @@
                 ("nowelt-" + fieldKey).replace(/[^a-z0-9_\-]/gi, "_")
               );
               var taRef = useRef(null);
+
               useEffect(function () {
                 if (!OldEditor || !OldEditor.initialize) return;
                 try {
@@ -698,6 +707,7 @@
                   clearInterval(wait);
                 };
               }, []);
+
               return el(
                 "div",
                 { key: fieldKey, className: "now-elt-sec-item" },
@@ -726,6 +736,14 @@
                           setField(def.key, v || "");
                         },
                         placeholder: __("Skriv formateret tekst…", "nowonline"),
+                        allowedFormats: [
+                          "core/bold",
+                          "core/italic",
+                          "core/link",
+                          "core/strikethrough",
+                          "core/underline",
+                          "core/code",
+                        ],
                       })
                     );
                   })
@@ -775,33 +793,35 @@
               });
             }
 
-            var tabs = [
-              {
-                name: "content",
-                title: __("Indhold", "nowonline"),
-                className: "nowonline-tab",
-              },
-              {
-                name: "design",
-                title: __("Design", "nowonline"),
-                className: "nowonline-tab",
-              },
-              {
-                name: "background",
-                title: __("Baggrund", "nowonline"),
-                className: "nowonline-tab",
-              },
-              {
-                name: "advanced",
-                title: __("Advanced", "nowonline"),
-                className: "nowonline-tab",
-              },
-            ];
             var tabsUI = TabPanel
               ? el(
                   TabPanel,
-                  { tabs: tabs, initialTabName: "content" },
-                  function (tab) {
+                  {
+                    tabs: [
+                      {
+                        name: "content",
+                        title: __("Indhold", "nowonline"),
+                        className: "nowonline-tab",
+                      },
+                      {
+                        name: "design",
+                        title: __("Design", "nowonline"),
+                        className: "nowonline-tab",
+                      },
+                      {
+                        name: "background",
+                        title: __("Baggrund", "nowonline"),
+                        className: "nowonline-tab",
+                      },
+                      {
+                        name: "advanced",
+                        title: __("Advanced", "nowonline"),
+                        className: "nowonline-tab",
+                      },
+                    ],
+                    initialTabName: "content",
+                  },
+                  function () {
                     return ContentTab();
                   }
                 )
