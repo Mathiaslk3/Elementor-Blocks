@@ -37,7 +37,9 @@ final class TemplatesRepo
         $allowed = $this->get_allowed_ids();
         if (empty($allowed)) return [];
 
-        $exclude_types = apply_filters('nowonline_elt_excluded_types', ['header','footer','kit']);
+        // ⬇️ Header er nu TILLADT (udeluk kun footer + kit som default)
+        $exclude_types = apply_filters('nowonline_elt_excluded_types', ['footer','kit']);
+
         $args = [
             'post_type'      => 'elementor_library',
             'post_status'    => ['publish','private'],
@@ -63,7 +65,9 @@ final class TemplatesRepo
         foreach ($posts as $p){
             $title = get_the_title($p) ?: ('#' . $p->ID);
             $t     = strtolower($title);
-            if (strpos($t, 'default kit') !== false || $t === 'header' || $t === 'footer') continue;
+
+            // ⬇️ Fjern kun “default kit” og rene footere baseret på titel. Header filtreres ikke.
+            if (strpos($t, 'default kit') !== false || $t === 'footer') continue;
 
             $override_att = isset($overrides[$p->ID]) ? (int) $overrides[$p->ID] : 0;
             [$thumb, $preview] = $this->build_image_urls_for_post((int) $p->ID, $override_att);
@@ -114,18 +118,18 @@ final class TemplatesRepo
 
                 // Label baseret på NORMALISERET type
                 $label = ucwords(str_replace(['_','-'], ' ', $key));
-                if     ($type === 'p')                 { $label .= ' (P)'; }
+                if     ($type === 'p')                   { $label .= ' (P)'; }
                 elseif (preg_match('/^h[1-6]$/', $type)) { $label .= ' (' . strtoupper($type) . ')'; }
-                elseif ($type === 'img')              { $label .= ' (Image)'; }
-                elseif ($type === 'bg')               { $label .= ' (Background)'; }
-                elseif ($type === 'url')              { $label .= ' (URL)'; }
-                elseif ($type === 'textarea')         { $label .= ' (Textarea)'; }
-                elseif ($type === 'rich')             { $label .= ' (Rich)'; }
-                else                                  { $label .= ' (Text)'; }
+                elseif ($type === 'img')                 { $label .= ' (Image)'; }
+                elseif ($type === 'bg')                  { $label .= ' (Background)'; }
+                elseif ($type === 'url')                 { $label .= ' (URL)'; }
+                elseif ($type === 'textarea')            { $label .= ' (Textarea)'; }
+                elseif ($type === 'rich')                { $label .= ' (Rich)'; }
+                else                                     { $label .= ' (Text)'; }
 
                 $list[] = [
                     'key'   => $key,
-                    'type'  => $type,   // <= vigtigt: send kanonisk type til JS
+                    'type'  => $type,
                     'label' => $label,
                 ];
             }
@@ -140,7 +144,9 @@ final class TemplatesRepo
      */
     public function get_all_for_admin(): array
     {
-        $exclude_types = ['header','footer','kit'];
+        // ⬇️ Header er også tilladt her; udeluk kun footer + kit
+        $exclude_types = ['footer','kit'];
+
         $args = [
             'post_type'      => 'elementor_library',
             'post_status'    => ['publish','private'],
@@ -165,7 +171,9 @@ final class TemplatesRepo
         foreach ($posts as $p){
             $title = get_the_title($p) ?: ('#' . $p->ID);
             $t     = strtolower($title);
-            if (strpos($t, 'default kit') !== false || $t === 'header' || $t === 'footer') continue;
+
+            // ⬇️ Udeluk kun “default kit” og eksplcite footere pr. titel
+            if (strpos($t, 'default kit') !== false || $t === 'footer') continue;
 
             $override_att = isset($overrides[$p->ID]) ? (int) $overrides[$p->ID] : 0;
             [$thumb, $preview] = $this->build_image_urls_for_post((int) $p->ID, $override_att);

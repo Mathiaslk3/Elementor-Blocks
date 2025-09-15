@@ -10,6 +10,9 @@ final class Renderer
 {
     private PlaceholderScanner $scanner;
 
+    /** NEW: marker om siden indeholder en header-blok */
+    private static $hasHeaderBlock = false;
+
     public function __construct(PlaceholderScanner $scanner)
     {
         $this->scanner = $scanner;
@@ -17,16 +20,40 @@ final class Renderer
 
     public function register(): void
     {
-        add_action('wp_head', [$this, 'frontend_css']);
+        add_action('wp_head',   [$this, 'frontend_css']);
+        // NEW: sæt body-klasse til at skjule temaets header, hvis der er en header-blok
+        add_action('wp_footer', [$this, 'inject_header_body_class']);
     }
 
     public function frontend_css(): void
     {
+        // NEW: tema-header selectors (kan udvides via filter)
+        $sel = apply_filters('nowonline_elt_header_hide_selectors', [
+            'header[role="banner"]',
+            '.elementor-location-header',
+            '#masthead',
+            '.site-header',
+            'header.site-header',
+            'header.header',
+            '.ast-desktop-header',
+            '.ast-mobile-header-wrap',
+            '.oceanwp-header',
+            '.main-header',
+            '.header-main',
+            '.gen-header',
+            '#header'
+        ]);
+        $prefA = array_map(static fn($s) => 'body.nowelt-replace-header ' . $s, $sel);
+        $prefB = array_map(static fn($s) => 'html.nowelt-replace-header ' . $s, $sel);
+        $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
+
         echo '<style>'
-            . '.nowonline-elt-wrapper{--nowonline-elt-gap:24px}'
+            . '.nowonline-elt-wrapper{--nowonline-elt-gap:0px}'
             . '.nowonline-elt-wrapper>.nowonline-elt-module{margin:var(--nowonline-elt-gap) 0}'
             . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
             . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
+            // NEW: skjul temaets/Elementors header når klassen er på <body>/<html>
+            . $hideCss
             . '</style>';
     }
 
@@ -531,7 +558,6 @@ final class Renderer
             if ($video instanceof \DOMElement) {
                 if ($poster !== '') $video->setAttribute('poster', esc_url($poster));
                 if ($video->hasAttribute('src')) $video->removeAttribute('src');
-                // fjern eksisterende <source> og indsæt en ny
                 foreach (iterator_to_array($video->getElementsByTagName('source')) as $src) {
                     $video->removeChild($src);
                 }
@@ -584,6 +610,21 @@ final class Renderer
             return '<iframe src="'.esc_url($v['url']).'" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>';
         }
         return '<video class="elementor-video" controls><source src="'.esc_url($v['url']).'"></video>';
+    }
+
+    /** NEW: er templaten en Elementor Header-template? */
+    private static function is_elementor_header_template(int $post_id): bool
+    {
+        if (!function_exists('wp_get_post_terms')) return false;
+        $slugs = wp_get_post_terms($post_id, 'elementor_library_type', ['fields' => 'slugs']);
+        return is_array($slugs) && in_array('header', array_map('strtolower', $slugs), true);
+    }
+
+    /** NEW: sæt body-klasse når der fandtes en header-blok */
+    public function inject_header_body_class(): void
+    {
+        if (!self::$hasHeaderBlock) return;
+        echo "<script>(function(){var d=document;d.documentElement.classList.add('nowelt-replace-header');if(d.body){d.body.classList.add('nowelt-replace-header');}})();</script>";
     }
 
     public function render($attrs = [], $content = ''): string
@@ -899,8 +940,13 @@ final class Renderer
             $html = self::rewrite_videos_dom($html, $videoMap, $posterMap);
         }
 
+        // NEW: hvis denne template er en HEADER, markér siden
+        $isHeader = self::is_elementor_header_template($tid);
+        if ($isHeader) self::$hasHeaderBlock = true;
+
         // (Valgfri) eksport som data-attribut
         $data_attr = !empty($linkMap) ? ' data-nowlinks=\'' . esc_attr( wp_json_encode($linkMap) ) . '\'' : '';
+        if ($isHeader) $data_attr .= ' data-nowelt-is-header="1"';
 
         return '<div class="nowonline-elt-wrapper" style="' . esc_attr($style) . '">'
              . '<div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"' . $data_attr . '>'
