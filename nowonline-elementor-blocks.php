@@ -57,7 +57,7 @@ add_filter('teeny_mce_buttons', function(array $btns){
 }, 100);
 
 add_filter('tiny_mce_before_init', function(array $init){
-    $init['fontsize_formats'] = $init['fontsize_formats'] ?? '12px 14px 16px 18px 20px 24px 28px 32px 40px 48px';
+    $init['fontsize_formats'] = $init['fontsize_formats'] ?? '12px 14px 16px 18px 20px 24px 28px 32px 40px 48px 58px 64px 96px';
     $init['font_formats'] = $init['font_formats'] ?? (
         'Montserrat=Montserrat, Arial, sans-serif;'.
         'System=system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;'.
@@ -75,7 +75,7 @@ add_filter('wp_editor_settings', function(array $settings){
     $settings['teeny'] = false;
     if (!isset($settings['tinymce']) || !is_array($settings['tinymce'])) $settings['tinymce'] = [];
     if (empty($settings['tinymce']['fontsize_formats'])) {
-        $settings['tinymce']['fontsize_formats'] = '12px 14px 16px 18px 20px 24px 28px 32px 40px 48px';
+        $settings['tinymce']['fontsize_formats'] = '12px 14px 16px 18px 20px 24px 28px 32px 40px 48px 58px 64px 96px';
     }
     return $settings;
 }, 100);
@@ -112,7 +112,7 @@ add_action('admin_head', function () {
         ['fontselect','fontsizeselect'].forEach(function(btn){ if (parts.indexOf(btn) === -1) parts.unshift(btn); });
         if (parts.indexOf('forecolor') === -1) parts.push('forecolor');
         init.toolbar1 = parts.join(',');
-        init.fontsize_formats = init.fontsize_formats || '12px 14px 16px 18px 20px 24px 28px 32px 40px 48px';
+        init.fontsize_formats = init.fontsize_formats || '12px 14px 16px 18px 20px 24px 28px 32px 40px 48px 58px 64px 96px';
         init.font_formats = init.font_formats || 'Montserrat=Montserrat, Arial, sans-serif;System=system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;Georgia=Georgia, serif;Times New Roman=Times New Roman, Times, serif;Courier New=Courier New, Courier, monospace';
         return init;
       }
