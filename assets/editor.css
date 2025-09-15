@@ -5,30 +5,65 @@
   padding: 8px;
   margin: 8px 0;
 }
-.now-elt-label { display:block; font-weight:600; margin-bottom:4px; }
-.now-elt-sec { background:#fff; border:1px solid #e2e4e7; padding:8px; margin:8px 0; }
-.now-elt-sec-title { font-weight:600; margin-bottom:6px; }
+.now-elt-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.now-elt-sec {
+  background: #fff;
+  border: 1px solid #e2e4e7;
+  padding: 8px;
+  margin: 8px 0;
+}
+.now-elt-sec-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
 .now-elt-imgprev {
-  max-width:100%; height:auto; display:block;
-  border:1px solid #ddd; border-radius:4px; margin-bottom:6px; background:#f8f8f8;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  background: #f8f8f8;
 }
 .now-elt-imgprev.now-elt-noimg {
-  display:flex; align-items:center; justify-content:center;
-  color:#777; height:140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #777;
+  height: 140px;
 }
-.now-elt-tokens { margin-top:6px; opacity:.75; font-size:12px; }
-.now-elt-muted { opacity:.7; }
-.now-elt-gap { margin-top:8px; }
-.now-elt-select { margin-top:8px; }
+.now-elt-tokens {
+  margin-top: 6px;
+  opacity: 0.75;
+  font-size: 12px;
+}
+.now-elt-muted {
+  opacity: 0.7;
+}
+.now-elt-gap {
+  margin-top: 8px;
+}
+.now-elt-select {
+  margin-top: 8px;
+}
 
 /* Inserter tile icon */
 .block-editor-inserter__panel .block-editor-block-icon img.nowonline-elt-icon {
-  width:40px !important; height:40px !important; border-radius:6px; object-fit:cover;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 6px;
+  object-fit: cover;
 }
 .block-editor-inserter__panel
   .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
   .block-editor-block-icon {
-  display:flex; align-items:center; justify-content:center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Canvas preview (toppen af blockens edit UI) */
@@ -43,7 +78,7 @@
 
 .now-elt-preview-img-wrap {
   width: 100%;
-  aspect-ratio: 16 / 9;     /* fin standard; justeres automatisk med contain */
+  aspect-ratio: 16 / 9; /* fin standard; justeres automatisk med contain */
   border: 1px solid #e2e4e7;
   border-radius: 8px;
   background: #f6f7f7;
@@ -56,7 +91,7 @@
 .now-elt-preview-img {
   width: 100%;
   height: 100%;
-  object-fit: contain;       /* vis hele billedet */
+  object-fit: contain; /* vis hele billedet */
   display: block;
 }
 
@@ -68,61 +103,76 @@
 .block-editor-inserter__results
   .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
   .block-editor-block-icon {
-  width: 220px; height: 140px;
-  border:1px solid #e2e4e7; border-radius:8px; overflow:hidden; background:#fff;
+  width: 220px;
+  height: 140px;
+  border: 1px solid #e2e4e7;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
 }
 .block-editor-inserter__results
   .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
-  .block-editor-block-icon img.now-elt-var-thumb {
-  width:100%; height:100%; object-fit:cover; display:block;
+  .block-editor-block-icon
+  img.now-elt-var-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .block-editor-inserter__results
   .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
   .block-editor-block-types-list__item-title {
-  margin-top:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;
+  margin-top: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
 }
 /* Editor: Center og fast bredde for vores block */
-.wp-block-nowonline-elt-template .now-elt-edit-root{
-  width: 1360px;        /* ønsket arbejdsbredde */
-  max-width: 100%;      /* så den ikke sprænger editorens viewport */
-  margin-left: auto;    /* centrer i editoren */
-  margin-right: auto;   /* centrer i editoren */
+.wp-block-nowonline-elt-template .now-elt-edit-root {
+  width: 1360px; /* ønsket arbejdsbredde */
+  max-width: 100%; /* så den ikke sprænger editorens viewport */
+  margin-left: auto; /* centrer i editoren */
+  margin-right: auto; /* centrer i editoren */
   box-sizing: border-box;
 }
 
 /* Hvis du kun viser et billede som preview: centrer og respekter proportioner */
-.wp-block-nowonline-elt-template .now-elt-edit-root > img{
+.wp-block-nowonline-elt-template .now-elt-edit-root > img {
   display: block;
   max-width: 100%;
   height: auto;
-  margin: 0 auto;       /* centrer selve billedet */
+  margin: 0 auto; /* centrer selve billedet */
 }
 
 /* Sikrer at dine sektioner ikke “stikker ud” */
 .wp-block-nowonline-elt-template .now-elt-wrap,
-.wp-block-nowonline-elt-template .now-elt-sec{
+.wp-block-nowonline-elt-template .now-elt-sec {
   max-width: 100%;
 }
 /* Fjern editorens max-width for vores blok */
 .editor-styles-wrapper
-  .block-editor-block-list__layout .block-editor-block-list__block[data-type="nowonline/elt-template"],
-.editor-styles-wrapper
-  .wp-block-nowonline-elt-template {
+  .block-editor-block-list__layout
+  .block-editor-block-list__block[data-type="nowonline/elt-template"],
+.editor-styles-wrapper .wp-block-nowonline-elt-template {
   max-width: none !important;
   width: 100% !important;
 }
 
 /* Gør hele blokken 100% bred (i editoren) og centrer indholdet */
-.editor-styles-wrapper .wp-block-nowonline-elt-template .now-elt-edit-root{
-  width: 1360px;          /* ønsket arbejdsbredde */
-  max-width: 100%;        /* skaler ned på små skærme */
-  margin-left: auto;      /* centrer */
-  margin-right: auto;     /* centrer */
+.editor-styles-wrapper .wp-block-nowonline-elt-template .now-elt-edit-root {
+  width: 1360px; /* ønsket arbejdsbredde */
+  max-width: 100%; /* skaler ned på små skærme */
+  margin-left: auto; /* centrer */
+  margin-right: auto; /* centrer */
   box-sizing: border-box;
 }
 
 /* Hvis du kun viser et IMG i preview, så centrer og respekter størrelse */
-.editor-styles-wrapper .wp-block-nowonline-elt-template .now-elt-edit-root > img{
+.editor-styles-wrapper
+  .wp-block-nowonline-elt-template
+  .now-elt-edit-root
+  > img {
   display: block;
   max-width: 100%;
   height: auto;
@@ -133,12 +183,11 @@
   > .wp-block-nowonline-elt-template,
 .block-editor-block-list__layout.is-root-container
   > .block-editor-block-list__block[data-type="nowonline/elt-template"],
-.editor-styles-wrapper .is-root-container
-  > .wp-block-nowonline-elt-template {
+.editor-styles-wrapper .is-root-container > .wp-block-nowonline-elt-template {
   /* beat the :where(...) rule */
   max-width: 1360px !important;
-  width: 100% !important;         /* still shrink on small viewports */
-  margin-left: auto !important;   /* keep centered */
+  width: 100% !important; /* still shrink on small viewports */
+  margin-left: auto !important; /* keep centered */
   margin-right: auto !important;
 }
 
@@ -178,6 +227,10 @@
 /* The preview <img> should always fill that 1360px width */
 .now-elt-edit-root > img {
   display: block;
-  width: 100% !important;   /* scales to 1360px */
-  height: auto !important;  /* keep aspect ratio */
+  width: 100% !important; /* scales to 1360px */
+  height: auto !important; /* keep aspect ratio */
+}
+
+.nowonline-elt-wrapper > .nowonline-elt-module {
+  margin: 0px !important;
 }

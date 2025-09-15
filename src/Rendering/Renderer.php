@@ -48,8 +48,6 @@ final class Renderer
         $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
 
         echo '<style>'
-            . '.nowonline-elt-wrapper{--nowonline-elt-gap:0px}'
-            . '.nowonline-elt-wrapper>.nowonline-elt-module{margin:var(--nowonline-elt-gap) 0}'
             . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
             . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
             // NEW: skjul temaets/Elementors header når klassen er på <body>/<html>
@@ -636,8 +634,6 @@ final class Renderer
         if ($tid <= 0) {
             return '<div class="nowonline-elt-empty">' . esc_html__('Vælg en Elementor-template fra blok-listen.', 'nowonline') . '</div>';
         }
-
-        $style = '--nowonline-elt-gap:' . $gap . 'px;';
 
         // Hent Elementor HTML
         $html = '';
