@@ -8,14 +8,17 @@ final class PlaceholderScanner
 {
     /**
      * [[type:key]] – type er valgfri (case-insensitive)
-     * Inkluderer også gallery/galleri.
+     * Inkluderer også gallery/galleri og video.
      */
     private const TOKEN_PATTERN =
-        '/\[\[(?:(h[1-6]|p|text|textarea|rich|wysiwyg|img|image|bg|url|gallery|galleri):)?([a-zA-Z0-9_\-]+)\]\]/i';
+        '/\[\[(?:(h[1-6]|p|text|textarea|rich|wysiwyg|img|image|bg|url|gallery|galleri|video):)?([a-zA-Z0-9_\-]+)\]\]/i';
 
     /** data-now-key="key" (", ' eller &quot;) → URL */
     private const ATTR_KEY_PATTERN =
         '/\bdata-now-key\s*=\s*(?:"|\'|&quot;)([a-zA-Z0-9_\-]+)(?:"|\'|&quot;)/i';
+    /** data-now-key | key (pipe-syntax) */
+    private const ATTR_KEY_PIPE =
+        '/\bdata-now-key\s*\|\s*([a-zA-Z0-9_\-]+)/i';
 
     /** class="... now-link-key ..." → URL */
     private const CLASS_LINK_PATTERN = '/\bnow-link-([a-z0-9_\-]+)\b/i';
@@ -23,10 +26,81 @@ final class PlaceholderScanner
     /** data-now-img="key" / data-now-image="key" / data-now-bg="key" → img/bg (bevar typen) */
     private const ATTR_MEDIA_PATTERN =
         '/\bdata-now-(img|image|bg)\s*=\s*(?:"|\'|&quot;)([a-zA-Z0-9_\-]+)(?:"|\'|&quot;)/i';
+    /** pipe-syntax for img/bg */
+    private const ATTR_MEDIA_PIPE_IMG =
+        '/\bdata-now-(img|image)\s*\|\s*([a-zA-Z0-9_\-]+)/i';
+    private const ATTR_MEDIA_PIPE_BG =
+        '/\bdata-now-bg\s*\|\s*([a-zA-Z0-9_\-]+)/i';
 
     /** class="... now-img-key ..." / "now-image-key" / "now-bg-key" → img/bg (bevar typen) */
     private const CLASS_MEDIA_PATTERN =
         '/\bnow-(img|image|bg)-([a-z0-9_\-]+)\b/i';
+
+    /** GALLERI: attributes + klasser + pipe-syntax */
+    private const ATTR_GAL_PATTERN =
+        '/\bdata-now-(gallery|galleri)\s*=\s*(?:"|\'|&quot;)([a-zA-Z0-9_\-]+)(?:"|\'|&quot;)/i';
+    private const ATTR_GAL_PIPE =
+        '/\bdata-now-(gallery|galleri)\s*\|\s*([a-zA-Z0-9_\-]+)/i';
+    private const CLASS_GAL_PATTERN =
+        '/\bnow-(gallery|galleri)-([a-z0-9_\-]+)\b/i';
+
+    /** VIDEO: attributes + klasser + pipe-syntax */
+    private const ATTR_VIDEO_PATTERN =
+        '/\bdata-now-video\s*=\s*(?:"|\'|&quot;)([a-zA-Z0-9_\-]+)(?:"|\'|&quot;)/i';
+    private const ATTR_VIDEO_PIPE =
+        '/\bdata-now-video\s*\|\s*([a-zA-Z0-9_\-]+)/i';
+    private const CLASS_VIDEO_PATTERN =
+        '/\bnow-video-([a-z0-9_\-]+)\b/i';
+
+    /** Normalisér pipe-syntax i en streng så regex’erne rammer */
+    private static function normalizePipesInString(string $s): string
+    {
+        $s = preg_replace(self::ATTR_MEDIA_PIPE_IMG, 'data-now-$1="$2"', $s);
+        $s = preg_replace(self::ATTR_MEDIA_PIPE_BG,  'data-now-bg="$1"',  $s);
+        $s = preg_replace(self::ATTR_GAL_PIPE,       'data-now-$1="$2"',  $s);
+        $s = preg_replace(self::ATTR_KEY_PIPE,       'data-now-key="$1"', $s);
+        $s = preg_replace(self::ATTR_VIDEO_PIPE,     'data-now-video="$1"', $s); // ← NY
+        return $s;
+    }
+
+    /** Normaliser type + aliaser */
+    private static function normalizeType(?string $type, string $key): string
+    {
+        $t = strtolower((string)$type);
+        $k = strtolower($key);
+
+        // aliaser
+        if ($t === 'wysiwyg') $t = 'rich';
+        if ($t === 'galleri') $t = 'gallery';
+        if ($t === 'image')   $t = 'img';
+        if (in_array($t, ['h1','h2','h3','h4','h5','h6','p','text'], true)) $t = 'text';
+
+        // hvis type mangler, gæt ud fra nøgle
+        if ($t === '') {
+            if (in_array($k, ['titel','undertitel','beskrivelse'], true)) return 'rich';
+            if ($k === 'billede')  return 'img';
+            if ($k === 'galleri')  return 'gallery';
+            if (strpos($k, 'video') !== false) return 'video'; // ← NY: gæt 'video' ud fra nøgle
+            if (preg_match('#^(url|link|href)$#i', $k)) return 'url';
+            return 'text';
+        }
+        return $t;
+    }
+
+    /** Tilføj/“opgrader” registreret type for en nøgle */
+    private static function add(array &$out, string $key, string $type): void
+    {
+        $k = strtolower($key);
+        $t = strtolower($type);
+        if ($k === '') return;
+
+        if (!isset($out[$k])) { $out[$k] = $t; return; }
+
+        // Opgrader fra text til mere specifik
+        if ($out[$k] === 'text' && in_array($t, ['url','rich','img','bg','gallery','textarea','video'], true)) {
+            $out[$k] = $t;
+        }
+    }
 
     /**
      * Scan Elementor’s data og returnér key => type.
@@ -58,48 +132,6 @@ final class PlaceholderScanner
         return $out;
     }
 
-    /** Normaliser type + aliaser */
-    private static function normalizeType(?string $type, string $key): string
-    {
-        $t = strtolower((string)$type);
-        $k = strtolower($key);
-
-        // aliaser
-        if ($t === 'wysiwyg') $t = 'rich';
-        if ($t === 'galleri') $t = 'gallery';
-        if ($t === 'image')   $t = 'img';
-        if (in_array($t, ['h1','h2','h3','h4','h5','h6','p','text'], true)) $t = 'text';
-
-        // hvis type mangler, gæt ud fra nøgle
-        if ($t === '') {
-            if (in_array($k, ['titel','undertitel','beskrivelse'], true)) return 'rich';
-            if ($k === 'billede')  return 'img';
-            if ($k === 'galleri')  return 'gallery';
-            if (preg_match('#^(url|link|href)$#i', $k)) return 'url';
-            return 'text';
-        }
-        return $t;
-    }
-
-    /** Tilføj/“opgrader” registreret type for en nøgle */
-    private static function add(array &$out, string $key, string $type): void
-    {
-        $k = strtolower($key);
-        $t = strtolower($type);
-        if ($k === '') return;
-
-        if (!isset($out[$k])) { $out[$k] = $t; return; }
-
-        // Opgrader fra text til mere specifik
-        if ($out[$k] === 'text' && in_array($t, ['url','rich','img','bg','gallery','textarea'], true)) {
-            $out[$k] = $t;
-        }
-        // Hvis vi allerede havde img og møder bg (eller omvendt) – lad den ny være mere specifik
-        if (($out[$k] === 'img' && $t === 'bg') || ($out[$k] === 'bg' && $t === 'img')) {
-            // behold den første (ingen ændring); begge er “specifikke”
-        }
-    }
-
     /** Rekursiv gennemgang af arrays/strings; udfylder $out by-ref */
     private function scanNode($node, array &$out): void
     {
@@ -108,6 +140,9 @@ final class PlaceholderScanner
             return;
         }
         if (!is_string($node)) return;
+
+        // Gør pipe-syntax parat til scanning
+        $node = self::normalizePipesInString($node);
 
         // 1) [[type:key]] tokens
         if (preg_match_all(self::TOKEN_PATTERN, $node, $m, PREG_SET_ORDER)) {
@@ -139,6 +174,22 @@ final class PlaceholderScanner
                 $key  = $mm[2];
                 self::add($out, $key, $kind === 'bg' ? 'bg' : 'img');
             }
+        }
+
+        // 4) Galleri via data-now-gallery/galleri og klasser
+        if (preg_match_all(self::ATTR_GAL_PATTERN, $node, $gm1, PREG_SET_ORDER)) {
+            foreach ($gm1 as $mm) self::add($out, $mm[2], 'gallery');
+        }
+        if (preg_match_all(self::CLASS_GAL_PATTERN, $node, $gm2, PREG_SET_ORDER)) {
+            foreach ($gm2 as $mm) self::add($out, $mm[2], 'gallery');
+        }
+
+        // 5) Video via data-now-video og klasser
+        if (preg_match_all(self::ATTR_VIDEO_PATTERN, $node, $vm1, PREG_SET_ORDER)) {
+            foreach ($vm1 as $mm) self::add($out, $mm[1], 'video');
+        }
+        if (preg_match_all(self::CLASS_VIDEO_PATTERN, $node, $vm2, PREG_SET_ORDER)) {
+            foreach ($vm2 as $mm) self::add($out, $mm[1], 'video');
         }
     }
 

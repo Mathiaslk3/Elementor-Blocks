@@ -126,22 +126,11 @@
     u = (u || "").trim();
     if (!u) return u;
 
-    // //domain -> https://domain
     if (u.indexOf("//") === 0) u = "https:" + u;
-
-    // http// -> http://  |  https// -> https://
     u = u.replace(/^http\/\//i, "http://").replace(/^https\/\//i, "https://");
-
-    // Dubleret schema
     u = u.replace(/^(https?:\/\/)(https?:\/\/)/i, "$1");
-
-    // Fjern ekstra slashes efter schema
     u = u.replace(/^(https?:\/\/)\/+/i, "$1");
-
-    // www. uden schema
     if (/^www\./i.test(u)) u = "https://" + u;
-
-    // Ligner domæne uden schema
     if (!/^[a-z][a-z0-9+.\-]*:\/\//i.test(u) && /^[^\/\s]+\.[^\s]+/.test(u)) {
       u = "https://" + u;
     }
@@ -164,9 +153,11 @@
     if (/^(img|image|picture|photo)$/.test(_t)) return "img";
     if (/^(bg|background|background_image)$/.test(_t)) return "bg";
     if (/^gallery$/.test(_t)) return "gallery";
+    if (/^video$/.test(_t)) return "video"; // <— NY
     if (["titel", "undertitel", "beskrivelse"].indexOf(_k) >= 0) return "rich";
     if (_k === "billede") return "img";
     if (_k === "galleri") return "gallery";
+    if (/^video(url)?$/.test(_k)) return "video"; // <— NY (nøgle matcher "video")
     if (!_t || _t === "text") {
       if (/(rich|wysiwyg|rte|editor|html)/.test(_k)) return "rich";
       if (/textarea|longtext|multiline/.test(_k)) return "textarea";
@@ -174,6 +165,7 @@
       if (/^img|image|photo/.test(_k)) return "img";
       if (/bg|background/.test(_k)) return "bg";
       if (/galleri|gallery/.test(_k)) return "gallery";
+      if (/video/.test(_k)) return "video"; // <— NY
     }
     return _t || "text";
   }
@@ -192,6 +184,9 @@
   }
   function isGallery(d) {
     return norm(d) === "gallery";
+  }
+  function isVideo(d) {
+    return norm(d) === "video";
   }
   function isHeadingOrText(d) {
     var n = norm(d);
@@ -247,6 +242,138 @@
             },
           })
         : el("div", {}, __("MediaUpload ikke tilgængelig", "nowonline"))
+    );
+  }
+
+  // --- Video field -----------------------------------------------------------
+  function VideoField(block, def) {
+    var key = def.key;
+    var fields = block.attributes.fields || {};
+    var url = fields[key] || "";
+    var posterKey = key + "_poster";
+    var poster = fields[posterKey] || "";
+
+    function setField(k, v) {
+      var next = Object.assign({}, block.attributes.fields || {});
+      if (v === null) delete next[k];
+      else next[k] = v;
+      block.setAttributes({ fields: next });
+    }
+
+    function onSelectVideo(media) {
+      var u = (media && media.url) || "";
+      setField(key, u);
+    }
+    function onSelectPoster(media) {
+      var u = (media && media.url) || "";
+      setField(posterKey, u);
+    }
+
+    var vidPreview = url
+      ? el(
+          "video",
+          {
+            src: url,
+            poster: poster || undefined,
+            controls: true,
+            style: { width: "100%", maxWidth: "420px", display: "block" },
+          },
+          null
+        )
+      : el(
+          "div",
+          { className: "now-elt-imgprev now-elt-noimg" },
+          __("Ingen video valgt", "nowonline")
+        );
+
+    var posterPreview = poster
+      ? el("img", {
+          src: poster,
+          alt: "",
+          className: "now-elt-imgprev",
+          style: { maxWidth: "210px", marginTop: "6px" },
+        })
+      : null;
+
+    return el(
+      "div",
+      { key: key, className: "now-elt-sec-item" },
+      el("label", { className: "now-elt-label" }, labelFor(def)),
+      vidPreview,
+      MediaUpload
+        ? el(MediaUpload, {
+            onSelect: onSelectVideo,
+            allowedTypes: ["video"],
+            value: 0,
+            render: function (o) {
+              return el(
+                "div",
+                { style: { marginTop: "6px" } },
+                el(
+                  "button",
+                  { className: "button", onClick: o.open },
+                  __("Vælg video", "nowonline")
+                ),
+                el(
+                  "button",
+                  {
+                    className: "button is-secondary",
+                    onClick: function () {
+                      setField(key, null);
+                    },
+                    style: { marginLeft: "6px" },
+                  },
+                  __("Fjern", "nowonline")
+                ),
+                el(TextControl, {
+                  type: "url",
+                  value: url || "",
+                  onChange: function (v) {
+                    setField(key, fixUrl(v || ""));
+                  },
+                  placeholder: __("eller indsæt video-URL…", "nowonline"),
+                  style: { display: "block", marginTop: "8px" },
+                })
+              );
+            },
+          })
+        : el("div", {}, __("MediaUpload ikke tilgængelig", "nowonline")),
+      // Poster
+      el(
+        "div",
+        { style: { marginTop: "10px" } },
+        el("div", { className: "now-elt-label" }, __("Poster (valgfri)", "nowonline")),
+        posterPreview || null,
+        MediaUpload
+          ? el(MediaUpload, {
+              onSelect: onSelectPoster,
+              allowedTypes: ["image"],
+              value: 0,
+              render: function (o) {
+                return el(
+                  "div",
+                  {},
+                  el(
+                    "button",
+                    { className: "button", onClick: o.open },
+                    __("Vælg poster", "nowonline")
+                  ),
+                  el(
+                    "button",
+                    {
+                      className: "button is-secondary",
+                      onClick: function () {
+                        setField(posterKey, null);
+                      },
+                      style: { marginLeft: "6px" },
+                    },
+                    __("Fjern", "nowonline")
+                  )
+                );
+              },
+            })
+          : null
+      )
     );
   }
 
@@ -548,6 +675,7 @@
             var urlDefs = defs.filter(isUrl);
             var imageDefs = defs.filter(isImage);
             var galDefs = defs.filter(isGallery);
+            var videoDefs = defs.filter(isVideo); // <— NY
 
             function Section(title, children) {
               if (!children || !children.length) return null;
@@ -651,6 +779,9 @@
 
             var imageInputs = imageDefs.map(function (def) {
               return ImageField(props, def);
+            });
+            var videoInputs = videoDefs.map(function (def) {
+              return VideoField(props, def);
             });
             var galleryInputs = galDefs.map(function (def) {
               return GalleryField(props, def);
@@ -793,6 +924,7 @@
                 Section(__("Formateret tekst", "nowonline"), richInputs),
                 Section(__("Tekster", "nowonline"), textInputs),
                 Section(__("Links", "nowonline"), linkInputs),
+                Section(__("Videoer", "nowonline"), videoInputs), // <— NY
                 Section(
                   __("Billeder", "nowonline"),
                   imageInputs.concat(galleryInputs)

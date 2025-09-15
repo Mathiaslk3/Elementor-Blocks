@@ -52,12 +52,12 @@ final class Renderer
         return $u;
     }
 
-    /** Elementor “pipe” attributes → normale data-attributter */
+    /** Elementor “pipe” attributes → normale data-attributter (inkl. gallery/galleri + video/poster) */
     private static function normalize_elementor_attributes(string $html): string
     {
-        // data-now-img | key  →  data-now-img="key"
         $html = preg_replace('/\bdata-now-(img|image|bg)\s*\|\s*([a-zA-Z0-9_\-]+)/i', 'data-now-$1="$2"', $html);
-        // data-now-key | key  →  data-now-key="key"
+        $html = preg_replace('/\bdata-now-(gallery|galleri)\s*\|\s*([a-zA-Z0-9_\-]+)/i', 'data-now-$1="$2"', $html);
+        $html = preg_replace('/\bdata-now-(video|poster)\s*\|\s*([a-zA-Z0-9_\-]+)/i', 'data-now-$1="$2"', $html);
         $html = preg_replace('/\bdata-now-key\s*\|\s*([a-zA-Z0-9_\-]+)/i', 'data-now-key="$1"', $html);
         return $html;
     }
@@ -70,6 +70,8 @@ final class Renderer
         if (in_array($k, ['titel','undertitel','beskrivelse'], true)) return 'rich';
         if ($k === 'billede')  return 'img';
         if ($k === 'galleri')  return 'gallery';
+        if ($k === 'video')    return 'video';
+        if (in_array($k, ['poster','videoposter','plakat'], true)) return 'poster';
         if (preg_match('#^(url|link|href)$#i', $k)) return 'url';
         return 'text';
     }
@@ -119,10 +121,49 @@ final class Renderer
         return [$img, $bg];
     }
 
+    /** Find gallery-nøgler brugt i markup (class/attr) */
+    private static function discover_gallery_keys_in_html(string $html): array
+    {
+        $keys = [];
+        if (preg_match_all('/\bdata-now-(?:gallery|galleri)=["\']([a-zA-Z0-9_-]+)["\']/i', $html, $m)) {
+            foreach ($m[1] as $k) $keys[strtolower($k)] = true;
+        }
+        if (preg_match_all('/\bnow-(?:gallery|galleri)-([a-z0-9_-]+)\b/i', $html, $m)) {
+            foreach ($m[1] as $k) $keys[strtolower($k)] = true;
+        }
+        return array_keys($keys);
+    }
+
+    /** gallery: key => array<url> (robust: virker også hvis key kun er brugt i HTML) */
+    private static function build_gallery_map(array $defs, array $fields, string $html): array
+    {
+        $out = [];
+        $alsoKeys = array_flip(self::discover_gallery_keys_in_html($html));
+
+        foreach ($fields as $k => $v) {
+            $key  = strtolower((string)$k);
+            $isGallery = (self::norm_type($defs, $key) === 'gallery') || isset($alsoKeys[$key]);
+            if (!$isGallery) continue;
+
+            $urls = [];
+            if (is_array($v)) {
+                foreach ($v as $u) {
+                    $uu = is_array($u) ? (string)($u['url'] ?? '') : (string)$u;
+                    $uu = trim($uu);
+                    if ($uu !== '') $urls[] = esc_url(self::fix_url($uu));
+                }
+            } else {
+                $parts = array_map('trim', explode(',', (string)$v));
+                foreach ($parts as $uu) if ($uu !== '') $urls[] = esc_url(self::fix_url($uu));
+            }
+            if ($urls) $out[$key] = $urls;
+        }
+        return $out;
+    }
+
     /** Erstat <img> + alle <source> i et HTML-stykke med én URL */
     private static function replace_img_and_sources_in_html(string $html, string $url): string
     {
-        // Første <img>
         $html = preg_replace_callback(
             '~<img\b([^>]*)>~i',
             function ($mm) use ($url) {
@@ -134,7 +175,6 @@ final class Renderer
             1
         );
 
-        // Alle <source>
         $html = preg_replace_callback(
             '~<source\b([^>]*)>~i',
             function ($mm) use ($url) {
@@ -235,12 +275,315 @@ final class Renderer
             }
         }
 
-        // Returner indholdet under root
         $out = '';
         foreach ($root->childNodes as $child) {
             $out .= $doc->saveHTML($child);
         }
         return $out;
+    }
+
+    /** Læs Elementor data-settings fra widget-elementet */
+    private static function parse_elementor_settings(\DOMElement $el): array
+    {
+        $raw = html_entity_decode((string)$el->getAttribute('data-settings'), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $j = $raw ? json_decode($raw, true) : [];
+        return is_array($j) ? $j : [];
+    }
+
+    /** Byg én slide ved at klone en eksisterende prototype (arver styling/lazy/klasser) */
+    private static function build_slide_from_prototype(\DOMDocument $doc, ?\DOMElement $proto, string $url, bool $lazyDefault): \DOMElement
+    {
+        if ($proto instanceof \DOMElement) {
+            /** @var \DOMElement $slide */
+            $slide = $proto->cloneNode(true);
+
+            // ryd runtime-klasser/attributter fra Swiper
+            $cls = ' ' . $slide->getAttribute('class') . ' ';
+            $cls = preg_replace('/\bswiper-slide-(?:duplicate|prev|next|active)\b/', '', $cls);
+            $slide->setAttribute('class', trim(preg_replace('/\s+/', ' ', $cls)));
+            foreach (['aria-label','aria-hidden','style','inert','data-swiper-slide-index'] as $rm) {
+                if ($slide->hasAttribute($rm)) $slide->removeAttribute($rm);
+            }
+
+            // find/etabler <img>
+            $img = $slide->getElementsByTagName('img')->item(0);
+            if (!($img instanceof \DOMElement)) {
+                $img = $doc->createElement('img');
+                $img->setAttribute('class', 'swiper-slide-image');
+                $slide->appendChild($img);
+            }
+
+            // lazy? (arv fra prototype eller default fra settings)
+            $imgClass = ' ' . $img->getAttribute('class') . ' ';
+            $lazy = (strpos($imgClass, ' swiper-lazy ') !== false) || $img->hasAttribute('data-src') || $lazyDefault;
+
+            foreach (['src','srcset','sizes','data-src','data-srcset','data-lazy','data-lazy-src','data-lazy-srcset'] as $rm) {
+                if ($img->hasAttribute($rm)) $img->removeAttribute($rm);
+            }
+            if ($lazy) {
+                if (strpos($imgClass, ' swiper-lazy ') === false) {
+                    $img->setAttribute('class', trim($img->getAttribute('class') . ' swiper-lazy'));
+                }
+                $img->setAttribute('data-src', esc_url($url));
+                $img->setAttribute('src', esc_url($url));
+            } else {
+                $img->setAttribute('src', esc_url($url));
+            }
+            if (!$img->hasAttribute('alt')) $img->setAttribute('alt','');
+
+            return $slide;
+        }
+
+        // fallback: lav en “ren” slide med standardklasser
+        $slide  = $doc->createElement('div');
+        $slide->setAttribute('class', 'swiper-slide');
+        $fig    = $doc->createElement('figure');
+        $fig->setAttribute('class', 'swiper-slide-inner');
+        $img    = $doc->createElement('img');
+        $img->setAttribute('class', $lazyDefault ? 'swiper-slide-image swiper-lazy' : 'swiper-slide-image');
+        if ($lazyDefault) {
+            $img->setAttribute('data-src', esc_url($url));
+            $img->setAttribute('src', esc_url($url));
+        } else {
+            $img->setAttribute('src', esc_url($url));
+        }
+        $img->setAttribute('alt','');
+        $fig->appendChild($img);
+        $slide->appendChild($fig);
+        return $slide;
+    }
+
+    /** Erstat indholdet i .swiper-wrapper med klonede slides, ellers fallback-grid */
+    private static function rewrite_galleries_dom(string $html, array $galMap): string
+    {
+        if (empty($galMap) || !class_exists('\DOMDocument')) return $html;
+
+        $doc = new \DOMDocument();
+        \libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="utf-8"?><div id="__nowroot">'.$html.'</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        \libxml_clear_errors();
+
+        $xpath = new \DOMXPath($doc);
+        $root  = $doc->getElementById('__nowroot');
+
+        $nodes = $xpath->query('//*[@data-now-gallery or @data-now-galleri or contains(@class,"now-gallery-") or contains(@class,"now-galleri-")]');
+        foreach ($nodes as $el) {
+            /** @var \DOMElement $el */
+            $key = strtolower(
+                $el->getAttribute('data-now-gallery')
+                ?: $el->getAttribute('data-now-galleri')
+            );
+            if ($key === '') {
+                $cls = ' ' . $el->getAttribute('class') . ' ';
+                if (preg_match('/\bnow-(?:gallery|galleri)-([a-z0-9_-]+)\b/i', $cls, $m)) {
+                    $key = strtolower($m[1]);
+                }
+            }
+            if ($key === '' || empty($galMap[$key])) continue;
+            $urls = $galMap[$key];
+
+            $settings    = self::parse_elementor_settings($el);
+            $lazyDefault = !empty($settings['lazyload']) && ($settings['lazyload'] === 'yes' || $settings['lazyload'] === true);
+
+            $wrapper = $xpath->query('.//*[contains(concat(" ", normalize-space(@class), " "), " swiper-wrapper ")]', $el)->item(0);
+            $proto   = null;
+            if ($wrapper instanceof \DOMElement) {
+                $protoList = $xpath->query('.//div[contains(concat(" ", normalize-space(@class), " "), " swiper-slide ")]', $wrapper);
+                if ($protoList && $protoList->length) $proto = $protoList->item(0);
+            }
+
+            if ($wrapper instanceof \DOMElement) {
+                while ($wrapper->firstChild) $wrapper->removeChild($wrapper->firstChild);
+                foreach ($urls as $u) {
+                    $wrapper->appendChild(self::build_slide_from_prototype($doc, $proto, $u, $lazyDefault));
+                }
+            } else {
+                while ($el->firstChild) $el->removeChild($el->firstChild);
+                $grid = $doc->createElement('div');
+                $grid->setAttribute('class', 'nowonline-elt-gallery');
+                foreach ($urls as $u) {
+                    $img = $doc->createElement('img');
+                    $img->setAttribute('decoding','async');
+                    $img->setAttribute('src', esc_url($u));
+                    $img->setAttribute('alt','');
+                    $grid->appendChild($img);
+                }
+                $el->appendChild($grid);
+            }
+        }
+
+        $out = '';
+        foreach ($root->childNodes as $child) $out .= $doc->saveHTML($child);
+        return $out;
+    }
+
+    /** ===== VIDEO WIDGET: helpers ===== */
+
+    /** Byg maps til video/poster */
+    private static function build_video_maps(array $defs, array $fields): array
+    {
+        $video = [];
+        $poster = [];
+        foreach ($fields as $k => $v) {
+            $key = strtolower((string)$k);
+            $t   = self::norm_type($defs, $key);
+            if ($t === 'video') {
+                $val = is_array($v) ? (string)($v['url'] ?? '') : (string)$v;
+                $url = esc_url(self::fix_url($val));
+                if ($url !== '') $video[$key] = $url;
+            } elseif ($t === 'poster') {
+                $val = is_array($v) ? (string)($v['url'] ?? '') : (string)$v;
+                $url = esc_url(self::fix_url($val));
+                if ($url !== '') $poster[$key] = $url;
+            }
+        }
+        return [$video, $poster];
+    }
+
+    /** Er det en direkte videofil? */
+    private static function is_video_file(string $u): bool
+    {
+        return (bool)preg_match('~\.(mp4|m4v|webm|ogv|ogg)(\?.*)?$~i', $u);
+    }
+
+    /** Lav YouTube/Vimeo til embed; filer beholdes som de er */
+    private static function to_embed_url(string $u): array
+    {
+        $url = trim($u);
+        if ($url === '') return ['kind'=>'file','url'=>$url];
+        $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
+
+        // YouTube
+        if (strpos($host,'youtube.com') !== false || strpos($host,'youtu.be') !== false) {
+            if (preg_match('~youtu\.be/([^?&/]+)~i', $url, $m)) {
+                return ['kind'=>'youtube', 'url'=>'https://www.youtube.com/embed/'.$m[1]];
+            }
+            if (preg_match('~youtube\.com/shorts/([^?&/]+)~i', $url, $m)) {
+                return ['kind'=>'youtube', 'url'=>'https://www.youtube.com/embed/'.$m[1]];
+            }
+            if (preg_match('~[?&]v=([^?&/]+)~i', $url, $m)) {
+                return ['kind'=>'youtube', 'url'=>'https://www.youtube.com/embed/'.$m[1]];
+            }
+            if (strpos($url,'/embed/') !== false) {
+                return ['kind'=>'youtube', 'url'=>$url];
+            }
+        }
+
+        // Vimeo
+        if (strpos($host,'vimeo.com') !== false) {
+            if (preg_match('~vimeo\.com/(?:video/)?([0-9]+)~i', $url, $m)) {
+                return ['kind'=>'vimeo', 'url'=>'https://player.vimeo.com/video/'.$m[1]];
+            }
+            if (preg_match('~player\.vimeo\.com/video/([0-9]+)~i', $url, $m)) {
+                return ['kind'=>'vimeo', 'url'=>$url];
+            }
+        }
+
+        return ['kind'=> self::is_video_file($url) ? 'file' : 'file', 'url'=>$url];
+    }
+
+    /** Udskift kilder inde i Elementor Video-widget – bevar markup/styling */
+    private static function rewrite_videos_dom(string $html, array $videoMap, array $posterMap): string
+    {
+        if (empty($videoMap)) return $html;
+        if (!class_exists('\DOMDocument')) return $html;
+
+        $doc = new \DOMDocument();
+        \libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="utf-8"?><div id="__nowroot">'.$html.'</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        \libxml_clear_errors();
+
+        $xpath = new \DOMXPath($doc);
+        $root  = $doc->getElementById('__nowroot');
+
+        // find wrappers med data-now-video eller class now-video-KEY
+        $nodes = $xpath->query('//*[@data-now-video or contains(@class,"now-video-")]');
+        foreach ($nodes as $el) {
+            /** @var \DOMElement $el */
+            $key = strtolower($el->getAttribute('data-now-video'));
+            if ($key === '') {
+                $cls = ' ' . $el->getAttribute('class') . ' ';
+                if (preg_match('/\bnow-video-([a-z0-9_-]+)\b/i', $cls, $m)) $key = strtolower($m[1]);
+            }
+            if ($key === '' || empty($videoMap[$key])) continue;
+
+            $vid = self::to_embed_url($videoMap[$key]);
+            $poster = '';
+
+            // poster fra separat nøgle (enten samme key i $posterMap, eller data-now-poster="poster_key")
+            if ($el->hasAttribute('data-now-poster')) {
+                $pKey = strtolower($el->getAttribute('data-now-poster'));
+                $poster = $posterMap[$pKey] ?? '';
+            } elseif (!empty($posterMap[$key])) {
+                $poster = $posterMap[$key];
+            }
+
+            // 1) Iframe (YouTube/Vimeo)
+            $iframe = $xpath->query('.//iframe', $el)->item(0);
+            if ($iframe instanceof \DOMElement && ($vid['kind'] === 'youtube' || $vid['kind'] === 'vimeo')) {
+                if ($iframe->hasAttribute('srcdoc')) $iframe->removeAttribute('srcdoc');
+                $iframe->setAttribute('src', esc_url($vid['url']));
+                continue;
+            }
+
+            // 2) <video> (self-hosted)
+            $video = $xpath->query('.//video', $el)->item(0);
+            if ($video instanceof \DOMElement) {
+                if ($poster !== '') $video->setAttribute('poster', esc_url($poster));
+                if ($video->hasAttribute('src')) $video->removeAttribute('src');
+                // fjern eksisterende <source> og indsæt en ny
+                foreach (iterator_to_array($video->getElementsByTagName('source')) as $src) {
+                    $video->removeChild($src);
+                }
+                $source = $doc->createElement('source');
+                $source->setAttribute('src', esc_url($vid['url']));
+                $video->appendChild($source);
+                continue;
+            }
+
+            // 3) Ingen child endnu – indsæt passende element
+            if ($vid['kind'] === 'youtube' || $vid['kind'] === 'vimeo') {
+                $new = $doc->createElement('iframe');
+                $new->setAttribute('src', esc_url($vid['url']));
+                $new->setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+                $new->setAttribute('allowfullscreen', 'allowfullscreen');
+                $el->appendChild($new);
+            } else {
+                $new = $doc->createElement('video');
+                $new->setAttribute('class', 'elementor-video');
+                $new->setAttribute('controls', 'controls');
+                if ($poster !== '') $new->setAttribute('poster', esc_url($poster));
+                $src = $doc->createElement('source');
+                $src->setAttribute('src', esc_url($vid['url']));
+                $new->appendChild($src);
+                $el->appendChild($new);
+            }
+        }
+
+        $out = '';
+        foreach ($root->childNodes as $child) $out .= $doc->saveHTML($child);
+        return $out;
+    }
+
+    /** Simpelt galleri-HTML til [[gallery:key]] og simpelt video-fallback til [[video:key]] */
+    private static function build_simple_gallery(array $urls): string
+    {
+        if (empty($urls)) return '';
+        $items = '';
+        foreach ($urls as $u) {
+            $items .= '<img src="' . esc_url($u) . '" alt="">';
+        }
+        return '<div class="nowonline-elt-gallery">' . $items . '</div>';
+    }
+
+    private static function build_simple_video(string $url): string
+    {
+        if ($url === '') return '';
+        $v = self::to_embed_url($url);
+        if ($v['kind'] === 'youtube' || $v['kind'] === 'vimeo') {
+            return '<iframe src="'.esc_url($v['url']).'" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>';
+        }
+        return '<video class="elementor-video" controls><source src="'.esc_url($v['url']).'"></video>';
     }
 
     public function render($attrs = [], $content = ''): string
@@ -275,7 +618,7 @@ final class Renderer
 
         $defs = $this->scanner->scan($tid);
 
-        // --- Token-udskiftninger (bagudkompatible) ---
+        // --- Token-udskiftninger (bagudkompatible — inkl. [[gallery:key]] og [[video:key]]) ---
         if (!empty($fields)) {
             $search  = [];
             $replace = [];
@@ -294,16 +637,26 @@ final class Renderer
                 } elseif ($type === 'gallery') {
                     $urls = [];
                     if (is_array($v)) {
-                        foreach ($v as $u) { $u = trim((string)$u); if ($u !== '') $urls[] = esc_url(self::fix_url($u)); }
+                        foreach ($v as $u) {
+                            $uu = is_array($u) ? (string)($u['url'] ?? '') : (string)$u;
+                            $uu = trim($uu);
+                            if ($uu !== '') $urls[] = esc_url(self::fix_url($uu));
+                        }
                     } else {
                         $parts = array_map('trim', explode(',', (string)$v));
                         foreach ($parts as $u) { if ($u !== '') $urls[] = esc_url(self::fix_url($u)); }
                     }
-                    $items = '';
-                    foreach ($urls as $u) { $items .= '<img src="' . $u . '" alt="" />'; }
-                    $gallery_html = $items ? '<div class="nowonline-elt-gallery">' . $items . '</div>' : '';
+                    $gallery_html = self::build_simple_gallery($urls);
                     foreach (['[[gallery:' . $key . ']]', '[[galleri:' . $key . ']]', '[[' . $key . ']]'] as $tok) {
                         $search[] = $tok; $replace[] = $gallery_html;
+                    }
+
+                } elseif ($type === 'video') {
+                    $val = is_array($v) ? (string)($v['url'] ?? '') : (string)$v;
+                    $url = esc_url(self::fix_url($val));
+                    $vid_html = self::build_simple_video($url);
+                    foreach (['[[video:' . $key . ']]', '[[' . $key . ']]'] as $tok) {
+                        $search[] = $tok; $replace[] = $vid_html;
                     }
 
                 } elseif ($type === 'url') {
@@ -426,16 +779,11 @@ final class Renderer
 
         // --- Billeder & baggrunde ---
         [$imgMap, $bgMap] = self::build_media_maps($defs, $fields);
-
-        // Prøv DOM-pass (mest robust). Fald tilbage til regex hvis DOM ikke er tilgængelig.
         if (!empty($imgMap) || !empty($bgMap)) {
             if (class_exists('\DOMDocument')) {
                 $html = self::rewrite_media_dom($html, $imgMap, $bgMap);
             } else {
-                // Fallback: dine eksisterende regex’er
-
                 if (!empty($imgMap)) {
-                    // <img ... data-now-img="KEY" ...>
                     $html = preg_replace_callback(
                         '~<img\b([^>]*?\s)data-now-(?:img|image)=(["\'])([^"\']+)\2([^>]*)>~i',
                         function ($m) use ($imgMap) {
@@ -449,7 +797,6 @@ final class Renderer
                         $html
                     );
 
-                    // <img class="... now-img-KEY ..." / now-image-KEY>
                     $html = preg_replace_callback(
                         '~<img\b([^>]*class=(["\'][^"\']*?\bnow-(?:img|image)-([a-z0-9_-]+)\b[^"\']*\2)[^>]*)>~i',
                         function ($m) use ($imgMap) {
@@ -463,7 +810,6 @@ final class Renderer
                         $html
                     );
 
-                    // Wrapper med data-now-img / class now-img-KEY
                     $html = preg_replace_callback(
                         '~<([a-z0-9:_-]+)\b([^>]*)\sdata-now-(?:img|image)=(["\'])([^"\']+)\3([^>]*)>(.*?)</\1>~is',
                         function ($m) use ($imgMap) {
@@ -496,7 +842,6 @@ final class Renderer
                 }
 
                 if (!empty($bgMap)) {
-                    // data-now-bg="KEY"
                     $html = preg_replace_callback(
                         '~<([a-z0-9:_-]+)\b([^>]*?\s)data-now-bg=(["\'])([^"\']+)\3([^>]*)>~i',
                         function ($m) use ($bgMap) {
@@ -518,7 +863,6 @@ final class Renderer
                         $html
                     );
 
-                    // class="... now-bg-KEY ..."
                     $html = preg_replace_callback(
                         '~<([a-z0-9:_-]+)\b([^>]*class=(["\'][^"\']*?\bnow-bg-([a-z0-9_-]+)\b[^"\']*\3)[^>]*)>~i',
                         function ($m) use ($bgMap) {
@@ -541,6 +885,18 @@ final class Renderer
                     );
                 }
             }
+        }
+
+        // --- GALLERI i Elementor widgets: klon slides så styling/animation bevares ---
+        $galMap = self::build_gallery_map($defs, $fields, $html);
+        if (!empty($galMap)) {
+            $html = self::rewrite_galleries_dom($html, $galMap);
+        }
+
+        // --- VIDEO WIDGET: udskift kilder inde i widgeten (bevar styling/animationer) ---
+        [$videoMap, $posterMap] = self::build_video_maps($defs, $fields);
+        if (!empty($videoMap)) {
+            $html = self::rewrite_videos_dom($html, $videoMap, $posterMap);
         }
 
         // (Valgfri) eksport som data-attribut
