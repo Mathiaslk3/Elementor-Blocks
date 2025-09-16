@@ -26,35 +26,57 @@ final class Renderer
         add_action('wp_footer', [$this, 'inject_header_body_class']);
     }
 
-    public function frontend_css(): void
-    {
-        $sel = apply_filters('nowonline_elt_header_hide_selectors', [
-            'header[role="banner"]','.elementor-location-header','#masthead','.site-header',
-            'header.site-header','header.header','.ast-desktop-header','.ast-mobile-header-wrap',
-            '.oceanwp-header','.main-header','.header-main','.gen-header','#header'
-        ]);
-        $prefA = array_map(static fn($s) => 'body.nowelt-replace-header ' . $s, $sel);
-        $prefB = array_map(static fn($s) => 'html.nowelt-replace-header ' . $s, $sel);
-        $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
+public function frontend_css(): void
+{
+    $sel = apply_filters('nowonline_elt_header_hide_selectors', [
+        'header[role="banner"]','.elementor-location-header','#masthead','.site-header',
+        'header.site-header','header.header','.ast-desktop-header','.ast-mobile-header-wrap',
+        '.oceanwp-header','.main-header','.header-main','.gen-header','#header'
+    ]);
+    $prefA = array_map(static fn($s) => 'body.nowelt-replace-header ' . $s, $sel);
+    $prefB = array_map(static fn($s) => 'html.nowelt-replace-header ' . $s, $sel);
+    $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
 
-        $targets = '.nowonline-elt-wrapper [data-now-bg],.nowonline-elt-wrapper .now-bg,'
-                 . '.nowonline-elt-wrapper [data-nowonline-bg],.nowonline-elt-wrapper .nowonline-bg';
-        $overlayTargets = $targets . '>.elementor-background-overlay,' . $targets . ' .elementor-background-overlay';
-        $btnSel = '.nowonline-elt-wrapper .nowonline-elt-module [id="now-link-link"]';
+    $targets = '.nowonline-elt-wrapper [data-now-bg],.nowonline-elt-wrapper .now-bg,'
+             . '.nowonline-elt-wrapper [data-nowonline-bg],.nowonline-elt-wrapper .nowonline-bg';
+    $overlayTargets = $targets . '>.elementor-background-overlay,' . $targets . ' .elementor-background-overlay';
 
-        echo '<style>'
-            . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
-            . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
-            // why: brug kun background-color for ikke at nulstille background-image
-            . $targets . '{background-color:var(--now-bg-color)!important;}'
-            . $overlayTargets . '{background-color:var(--now-bg-color)!important;}'
-            . $btnSel . '{color:var(--now-btn-color)!important;border-color:var(--now-btn-bdc)!important;border-width:var(--now-btn-bdw)!important;border-radius:var(--now-btn-rad)!important;border-style:solid!important;}'
-            . $btnSel . ':hover,' . $btnSel . ':focus{color:var(--now-btn-color)!important;border-color:var(--now-btn-bdc)!important;}'
-            . '.nowonline-elt-wrapper .nowelt-has-bgvid{position:relative;overflow:hidden;}'
-            . '.nowonline-elt-wrapper .nowelt-bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;}'
-            . $hideCss
-            . '</style>';
-    }
+    // Kun hvis wrapperen faktisk har mindst én --now-btn-* variabel sat
+    $btnScope = '.nowonline-elt-wrapper[style*="--now-btn-"] .nowonline-elt-module';
+
+    // Begræns til <a> (Elementor-knapper er typisk <a>) + dine now-link-varianter
+    $btnSel = $btnScope . ' a[data-now-key],'
+            . $btnScope . ' a[class*="now-link-"],'
+            . $btnScope . ' a[id^="now-link-"],'
+            . $btnScope . ' a.elementor-button,'
+            . $btnScope . ' a.elementor-button-link';
+
+    echo '<style>'
+        . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
+        . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
+        // VIGTIGT: kun background-color (ellers nulstilles background-image)
+        . $targets . '{background-color:var(--now-bg-color)!important;}'
+        . $overlayTargets . '{background-color:var(--now-bg-color)!important;}'
+
+        // Knap-variabler – gælder kun når wrapper har --now-btn-* i style-attributten.
+        // Ingen tvungen border-style, så template-styling arves som default.
+        . $btnSel . '{'
+            . 'color:var(--now-btn-color)!important;'
+            . 'border-color:var(--now-btn-bdc)!important;'
+            . 'border-width:var(--now-btn-bdw)!important;'
+            . 'border-radius:var(--now-btn-rad)!important;'
+        . '}'
+        . $btnSel . ':hover,' . $btnSel . ':focus{'
+            . 'color:var(--now-btn-color)!important;'
+            . 'border-color:var(--now-btn-bdc)!important;'
+        . '}'
+
+        . '.nowonline-elt-wrapper .nowelt-has-bgvid{position:relative;overflow:hidden;}'
+        . '.nowonline-elt-wrapper .nowelt-bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;}'
+        . $hideCss
+        . '</style>';
+}
+
 
     private static function fix_url(string $u): string
     {
@@ -74,7 +96,7 @@ final class Renderer
             }
         }
 
-        // why: undgå mixed content når site går på SSL (interne http->https)
+        // WHY: undgå mixed content når site går på SSL
         if (is_ssl() && stripos($u, 'http://') === 0) {
             $homeHost = parse_url(home_url(), PHP_URL_HOST);
             $urlHost  = parse_url($u, PHP_URL_HOST);
@@ -129,6 +151,33 @@ final class Renderer
         if (in_array($v, ['cover','contain','auto'], true)) return $v;
         if (preg_match('#^[0-9]*\.?[0-9]+(px|%|rem|em|vh|vw)(\s+[0-9]*\.?[0-9]+(px|%|rem|em|vh|vw))?$#i', $v)) return $v;
         return '';
+    }
+
+    /**
+     * Server-side sanitizer til rich HTML.
+     * inlineOnly=true => fjerner blok-tags (p, div, h1-6) men tillader sikre inline-tags.
+     */
+    private static function sanitize_rich_html(string $html, bool $inlineOnly = false): string
+    {
+        $html = (string)$html;
+        if ($html === '') return '';
+
+        // Fjern class-attributter (bl.a. Elementor-klasser) før wp_kses
+        $html = preg_replace('/\sclass=("|\').*?\1/i', '', $html);
+
+        if ($inlineOnly) {
+            $allowed = [
+                'a'      => ['href' => true, 'target' => true, 'rel' => true],
+                'span'   => ['style' => true],
+                'strong' => [], 'em' => [], 'b' => [], 'i' => [], 'u' => [],
+                'br'     => [], 'code' => [], 'sup' => [], 'sub' => [],
+            ];
+            // Drop blokke helt ved at strippe dem og beholde indmaten
+            $html = preg_replace('#</?(?:p|div|h[1-6]|section|article|header|footer)[^>]*>#i', '', $html);
+            return wp_kses($html, $allowed);
+        }
+
+        return wp_kses_post($html);
     }
 
     private static function normalize_elementor_attributes(string $html): string
@@ -200,7 +249,7 @@ final class Renderer
             $type = self::norm_type($defs, $key);
 
             if ($type === 'text' && isset($bgKeysInHtml[$key])) {
-                $type = 'bg'; // why: nøgle bruges som bg i templaten
+                $type = 'bg'; // WHY: nøgle bruges som bg i templaten
             }
 
             if ($type !== 'img' && $type !== 'bg') continue;
@@ -725,6 +774,115 @@ final class Renderer
         });
     }
 
+    /** Opdater knap-labels (ID, data-now-label, now-label-*, data-now-key) uden at bryde Elementor markup */
+    private static function rewrite_button_labels_dom(string $html, array $fields): string
+    {
+        // Case-insensitiv map af felter
+        $map = [];
+        foreach ($fields as $k => $v) { $map[strtolower((string)$k)] = $v; }
+
+        // Find labeltekst ud fra key + gængse synonymer
+        $getLabel = function(string $key) use ($map): string {
+            $key = strtolower($key);
+            $cands = [
+                $key, $key.'label', $key.'_label',
+                $key.'text', $key.'_text',
+                $key.'title', $key.'_title',
+                'label_'.$key, 'text_'.$key, 'title_'.$key,
+            ];
+            foreach ($cands as $ck) {
+                if (!array_key_exists($ck, $map)) continue;
+                $val = $map[$ck];
+                $txt = '';
+                if (is_array($val)) {
+                    $txt = (string)($val['title'] ?? $val['text'] ?? $val['label'] ?? '');
+                } else {
+                    $txt = (string)$val;
+                }
+                $txt = trim(wp_strip_all_tags($txt));
+                if ($txt !== '') return $txt;
+            }
+
+            // Særligt: hvis selve $key er et link-array, brug dets title/text/label
+            if (array_key_exists($key, $map) && is_array($map[$key])) {
+                $arr = $map[$key];
+                $txt = (string)($arr['title'] ?? $arr['text'] ?? $arr['label'] ?? '');
+                $txt = trim(wp_strip_all_tags($txt));
+                if ($txt !== '') return $txt;
+            }
+            return '';
+        };
+
+        return self::safeDom($html, function(\DOMDocument $doc, \DOMXPath $xpath, \DOMElement $root) use ($getLabel) {
+            $nodes = $xpath->query('//a['
+                . '@data-now-label or '
+                . 'contains(concat(" ", normalize-space(@class), " "), " now-label- ") or '
+                . '@data-now-key or '
+                . 'starts-with(@id,"now-link-")'
+                . ']');
+
+            if (!$nodes) return;
+
+            foreach ($nodes as $a) {
+                /** @var \DOMElement $a */
+                $labelKey = strtolower($a->getAttribute('data-now-label'));
+
+                if ($labelKey === '') {
+                    $cls = ' ' . $a->getAttribute('class') . ' ';
+                    if (preg_match('/\bnow-label-([a-z0-9_-]+)\b/i', $cls, $m)) {
+                        $labelKey = strtolower($m[1]);
+                    }
+                }
+                if ($labelKey === '' && $a->hasAttribute('data-now-key')) {
+                    $labelKey = strtolower($a->getAttribute('data-now-key'));
+                }
+                if ($labelKey === '' && $a->hasAttribute('id')) {
+                    if (preg_match('/^now-link-([a-z0-9_-]+)$/i', $a->getAttribute('id'), $m)) {
+                        $labelKey = strtolower($m[1]); // fx "link" i now-link-link
+                    }
+                }
+                if ($labelKey === '') continue;
+
+                $labelText = $getLabel($labelKey);
+                if ($labelText === '') continue;
+
+                // Opdater kun tekstnoden hvis Elementor markup findes
+                $txtNode = $xpath->query('.//*[contains(concat(" ", normalize-space(@class), " "), " elementor-button-text ")]', $a)->item(0);
+                if ($txtNode instanceof \DOMElement) {
+                    while ($txtNode->firstChild) $txtNode->removeChild($txtNode->firstChild);
+                    $txtNode->appendChild($doc->createTextNode($labelText));
+                    continue;
+                }
+
+                // Ellers genskab standardstruktur og bevar ikoner
+                $leftIcons = []; $rightIcons = [];
+                $iconNodes = $xpath->query('.//*[contains(concat(" ", normalize-space(@class), " "), " elementor-button-icon ")]', $a);
+                if ($iconNodes) {
+                    foreach ($iconNodes as $ic) {
+                        /** @var \DOMElement $ic */
+                        $clone = $ic->cloneNode(true);
+                        if (strpos(' '.$ic->getAttribute('class').' ', ' elementor-align-icon-right ') !== false) $rightIcons[] = $clone;
+                        else $leftIcons[] = $clone;
+                    }
+                }
+
+                while ($a->firstChild) $a->removeChild($a->firstChild);
+
+                $wrap = $doc->createElement('span');
+                $wrap->setAttribute('class', 'elementor-button-content-wrapper');
+                foreach ($leftIcons as $ic) $wrap->appendChild($ic);
+
+                $span = $doc->createElement('span');
+                $span->setAttribute('class', 'elementor-button-text');
+                $span->appendChild($doc->createTextNode($labelText));
+                $wrap->appendChild($span);
+
+                foreach ($rightIcons as $ic) $wrap->appendChild($ic);
+                $a->appendChild($wrap);
+            }
+        });
+    }
+
     private static function build_simple_gallery(array $urls): string
     {
         if (empty($urls)) return '';
@@ -918,8 +1076,17 @@ final class Renderer
                     $txt = nl2br( esc_html( (string)$v ) );
                     foreach (['[[textarea:' . $key . ']]', '[[' . $key . ']]'] as $tok) { $search[] = $tok; $replace[] = $txt; }
                 } elseif ($type === 'rich' || $type === 'wysiwyg') {
-                    $html_val = wp_kses_post( (string)$v );
-                    foreach (['[[rich:' . $key . ']]', '[[wysiwyg:' . $key . ']]', '[[' . $key . ']]'] as $tok) { $search[] = $tok; $replace[] = $html_val; }
+                    // Nøgler der typisk sidder inde i <h#> skal være inline-only
+                    $inlineKeys = ['titel','title','heading','overskrift','headline','undertitel','subtitle'];
+                    $inlineOnly = in_array($key, $inlineKeys, true);
+                    $html_val = self::sanitize_rich_html((string)$v, $inlineOnly);
+
+                    // Understøt også [[h1:key]] osv. for rich-felter
+                    $tokens = ['[[rich:' . $key . ']]', '[[wysiwyg:' . $key . ']]', '[[' . $key . ']]',
+                               '[[text:' . $key . ']]','[[p:' . $key . ']]',
+                               '[[h1:' . $key . ']]','[[h2:' . $key . ']]','[[h3:' . $key . ']]',
+                               '[[h4:' . $key . ']]','[[h5:' . $key . ']]','[[h6:' . $key . ']]'];
+                    foreach ($tokens as $tok) { $search[] = $tok; $replace[] = $html_val; }
                 } else {
                     $val = is_array($v) ? '' : (string)$v;
                     $txt = esc_html($val);
@@ -987,6 +1154,9 @@ final class Renderer
             );
         }
 
+        // Opdater knap-labels efter at href/target er sat – uanset om der var URL-felter
+        $html = self::rewrite_button_labels_dom($html, $fields);
+
         // NY: brug HTML til at afgøre bg-keys
         [$imgMap, $bgMap] = self::build_media_maps($defs, $fields, $html);
         if (!empty($imgMap) || !empty($bgMap)) {
@@ -996,6 +1166,8 @@ final class Renderer
         $galMap = self::build_gallery_map($defs, $fields, $html);
         if (!empty($galMap)) { $html = self::rewrite_galleries_dom($html, $galMap); }
 
+        if (!empty($videoMap)) { $html = self::rewrite_videos_dom($html, $posterMap); } // NOTE: posterMap var 2nd param før – men funktionen kræver (html, videoMap, posterMap)
+        // Correct call:
         if (!empty($videoMap)) { $html = self::rewrite_videos_dom($html, $videoMap, $posterMap); }
 
         $isHeader = self::is_elementor_header_template($tid);

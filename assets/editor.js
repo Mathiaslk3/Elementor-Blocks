@@ -159,24 +159,43 @@
   }
 
   // --- Rich sanitizer -------------------------------------------------------
-  function sanitizeRichHtml(input) {
+  /**
+   * Sanitize rich HTML coming from inputs.
+   * inlineOnly=true: unwrap/block-drop <p>, <div>, <h1-6> to avoid invalid markup when injected inside headings
+   */
+  function sanitizeRichHtml(input, inlineOnly) {
     var html = String(input || "");
     if (!html) return "";
     var wrap = document.createElement("div");
     wrap.innerHTML = html;
 
+    function unwrap(node) {
+      var parent = node.parentNode;
+      if (!parent) return;
+      while (node.firstChild) parent.insertBefore(node.firstChild, node);
+      parent.removeChild(node);
+    }
+
     function walk(node) {
       if (!node || node.nodeType !== 1) return;
       var tag = node.tagName.toLowerCase();
-      var cls = node.getAttribute("class") || "";
-      if (/elementor-/.test(cls)) node.removeAttribute("class"); // undgå Elementor-klasser i content
 
-      if (/^h[1-6]$/.test(tag)) {
-        var p = document.createElement("p");
-        while (node.firstChild) p.appendChild(node.firstChild);
-        node.parentNode.replaceChild(p, node);
+      // strip Elementor classes to avoid style collisions
+      var cls = node.getAttribute("class") || "";
+      if (/elementor-/.test(cls)) node.removeAttribute("class");
+
+      // If inlineOnly: remove block wrappers that would break when inserted in a <h1>
+      if (
+        inlineOnly &&
+        (/^h[1-6]$/.test(tag) || tag === "p" || tag === "div")
+      ) {
+        var next = node.nextSibling;
+        unwrap(node);
+        if (next && next.nodeType === 1) walk(next);
+        return;
       }
 
+      // Allowed attributes per tag (we never drop the tag itself)
       var allowed = {
         a: ["href", "target", "rel"],
         img: ["src", "alt"],
@@ -193,10 +212,19 @@
         ol: [],
         li: [],
         code: [],
+        // allow headings with no attributes if not inlineOnly
+        h1: [],
+        h2: [],
+        h3: [],
+        h4: [],
+        h5: [],
+        h6: [],
       };
       var keep =
         allowed[tag] ||
         (tag === "span" || tag === "p" || tag === "div" ? ["style"] : []);
+
+      // remove all non-allowed attributes
       var toRemove = [];
       for (var i = 0; i < node.attributes.length; i++) {
         var name = node.attributes[i].name;
@@ -731,7 +759,7 @@
             padTopMobile: { type: "string", default: "" },
             padBottomMobile: { type: "string", default: "" },
 
-            // legacy (ikke brugt i UI)
+            // legacy
             containerTargetMode: { type: "string", default: "auto" },
             containerTarget: { type: "string", default: "" },
           },
@@ -757,7 +785,7 @@
             var bgSize = attrs.bgSize || "cover";
             var bgFixed = !!attrs.bgFixed;
 
-            // --- NEW: Advanced values ---
+            // Advanced values
             var hideDesktop = !!attrs.hideDesktop;
             var hideTablet = !!attrs.hideTablet;
             var hideMobile = !!attrs.hideMobile;
@@ -938,7 +966,13 @@
                 (props.attributes.fields &&
                   props.attributes.fields[fieldKey]) ||
                 "";
-              var cleanedInitial = sanitizeRichHtml(initial);
+
+              // inlineOnly for headings/titles so Elementor heading inherits styles
+              var inlineOnly =
+                /^(titel|title|heading|overskrift|headline)$/i.test(
+                  String(fieldKey || "")
+                );
+              var cleanedInitial = sanitizeRichHtml(initial, inlineOnly);
 
               function safe(s) {
                 return String(s || "").replace(/[^a-z0-9_-]/gi, "");
@@ -972,7 +1006,7 @@
                         ? taRef.current.value
                         : "";
                     var next = Object.assign({}, props.attributes.fields || {});
-                    next[fieldKey] = sanitizeRichHtml(raw) || "";
+                    next[fieldKey] = sanitizeRichHtml(raw, inlineOnly) || "";
                     props.setAttributes({ fields: next });
                   }
                   function bindWhenReady() {
@@ -1052,7 +1086,14 @@
                 ? richDefs.map(TinyMCEField)
                 : RichText
                 ? richDefs.map(function (def) {
-                    var value = sanitizeRichHtml(fields[def.key] || "");
+                    var inlineOnly =
+                      /^(titel|title|heading|overskrift|headline)$/i.test(
+                        String(def.key || "")
+                      );
+                    var value = sanitizeRichHtml(
+                      fields[def.key] || "",
+                      inlineOnly
+                    );
                     return el(
                       "div",
                       { key: def.key, className: "now-elt-sec-item" },
@@ -1065,7 +1106,7 @@
                             {},
                             props.attributes.fields || {}
                           );
-                          next[def.key] = sanitizeRichHtml(v || "");
+                          next[def.key] = sanitizeRichHtml(v || "", inlineOnly);
                           props.setAttributes({ fields: next });
                         },
                         placeholder: __("Skriv formateret tekst…", "nowonline"),
