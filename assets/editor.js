@@ -57,6 +57,39 @@
         p.label || ""
       );
     };
+  var SelectControl =
+    C.SelectControl ||
+    function (p) {
+      return el(
+        "label",
+        {},
+        p.label || "",
+        el(
+          "select",
+          {
+            value: p.value,
+            onChange: function (e) {
+              p.onChange && p.onChange(e.target.value);
+            },
+            style: { display: "block", marginTop: 4 },
+          },
+          (p.options || []).map(function (o) {
+            return el("option", { value: o.value, key: o.value }, o.label);
+          })
+        )
+      );
+    };
+  var ColorPalette =
+    C.ColorPalette ||
+    function (p) {
+      return el("input", {
+        type: "color",
+        value: p.value || "#000000",
+        onChange: function (e) {
+          p.onChange && p.onChange(e.target.value);
+        },
+      });
+    };
 
   var InspectorControls = B.InspectorControls || "div";
   var MediaUpload = B.MediaUpload;
@@ -125,11 +158,12 @@
   function fixUrl(u) {
     u = (u || "").trim();
     if (!u) return u;
-
     if (u.indexOf("//") === 0) u = "https:" + u;
-    u = u.replace(/^http\/\//i, "http://").replace(/^https\/\//i, "https://");
+    u = u
+      .replace(/^http\/:\/\//i, "http://")
+      .replace(/^https\/:\/\//i, "https://");
     u = u.replace(/^(https?:\/\/)(https?:\/\/)/i, "$1");
-    u = u.replace(/^(https?:\/\/)\/+/i, "$1");
+    u = u.replace(/^(https?:\/\/)+/i, "$1");
     if (/^www\./i.test(u)) u = "https://" + u;
     if (!/^[a-z][a-z0-9+.\-]*:\/\//i.test(u) && /^[^\/\s]+\.[^\s]+/.test(u)) {
       u = "https://" + u;
@@ -153,11 +187,11 @@
     if (/^(img|image|picture|photo)$/.test(_t)) return "img";
     if (/^(bg|background|background_image)$/.test(_t)) return "bg";
     if (/^gallery$/.test(_t)) return "gallery";
-    if (/^video$/.test(_t)) return "video"; // <— NY
+    if (/^video$/.test(_t)) return "video";
     if (["titel", "undertitel", "beskrivelse"].indexOf(_k) >= 0) return "rich";
     if (_k === "billede") return "img";
     if (_k === "galleri") return "gallery";
-    if (/^video(url)?$/.test(_k)) return "video"; // <— NY (nøgle matcher "video")
+    if (/^video(url)?$/.test(_k)) return "video";
     if (!_t || _t === "text") {
       if (/(rich|wysiwyg|rte|editor|html)/.test(_k)) return "rich";
       if (/textarea|longtext|multiline/.test(_k)) return "textarea";
@@ -165,7 +199,7 @@
       if (/^img|image|photo/.test(_k)) return "img";
       if (/bg|background/.test(_k)) return "bg";
       if (/galleri|gallery/.test(_k)) return "gallery";
-      if (/video/.test(_k)) return "video"; // <— NY
+      if (/video/.test(_k)) return "video";
     }
     return _t || "text";
   }
@@ -252,14 +286,12 @@
     var url = fields[key] || "";
     var posterKey = key + "_poster";
     var poster = fields[posterKey] || "";
-
     function setField(k, v) {
       var next = Object.assign({}, block.attributes.fields || {});
       if (v === null) delete next[k];
       else next[k] = v;
       block.setAttributes({ fields: next });
     }
-
     function onSelectVideo(media) {
       var u = (media && media.url) || "";
       setField(key, u);
@@ -268,7 +300,6 @@
       var u = (media && media.url) || "";
       setField(posterKey, u);
     }
-
     var vidPreview = url
       ? el(
           "video",
@@ -285,7 +316,6 @@
           { className: "now-elt-imgprev now-elt-noimg" },
           __("Ingen video valgt", "nowonline")
         );
-
     var posterPreview = poster
       ? el("img", {
           src: poster,
@@ -294,7 +324,6 @@
           style: { maxWidth: "210px", marginTop: "6px" },
         })
       : null;
-
     return el(
       "div",
       { key: key, className: "now-elt-sec-item" },
@@ -338,11 +367,14 @@
             },
           })
         : el("div", {}, __("MediaUpload ikke tilgængelig", "nowonline")),
-      // Poster
       el(
         "div",
         { style: { marginTop: "10px" } },
-        el("div", { className: "now-elt-label" }, __("Poster (valgfri)", "nowonline")),
+        el(
+          "div",
+          { className: "now-elt-label" },
+          __("Poster (valgfri)", "nowonline")
+        ),
         posterPreview || null,
         MediaUpload
           ? el(MediaUpload, {
@@ -418,7 +450,6 @@
           { className: "now-elt-imgprev now-elt-noimg" },
           __("Ingen billeder i galleriet", "nowonline")
         );
-
     return el(
       "div",
       { key: def.key, className: "now-elt-sec-item" },
@@ -461,7 +492,6 @@
     var block = p.block,
       def = p.def,
       fieldKey = def.key;
-
     var current = (block.attributes.fields || {})[fieldKey];
     var currObj =
       current && typeof current === "object"
@@ -490,7 +520,6 @@
     var _s = useState(""),
       search = _s[0],
       setSearch = _s[1];
-
     var pages = sel && sel.pages ? sel.pages : [];
     if (search && pages.length) {
       var needle = search.toLowerCase();
@@ -628,12 +657,19 @@
             background: { type: "object", default: {} },
             responsive: { type: "object", default: {} },
             spacing: { type: "object", default: {} },
+            // Design tab attrs
+            containerBg: { type: "string", default: "" },
+            containerTargetMode: { type: "string", default: "auto" }, // auto | data-id | css_id | css_class | selector
+            containerTarget: { type: "string", default: "" },
           },
 
           edit: function (props) {
             var attrs = props.attributes || {};
             var templateId = attrs.templateId || 0;
             var fields = attrs.fields || {};
+            var containerBg = attrs.containerBg || "";
+            var containerTargetMode = attrs.containerTargetMode || "auto";
+            var containerTarget = attrs.containerTarget || "";
 
             function onPick(e) {
               var id = parseInt(e.target.value || "0", 10) || 0;
@@ -643,6 +679,10 @@
               var next = Object.assign({}, fields);
               next[k] = v;
               props.setAttributes({ fields: next });
+            }
+
+            function setAttr(next) {
+              props.setAttributes(next);
             }
 
             var picker = el(
@@ -675,7 +715,7 @@
             var urlDefs = defs.filter(isUrl);
             var imageDefs = defs.filter(isImage);
             var galDefs = defs.filter(isGallery);
-            var videoDefs = defs.filter(isVideo); // <— NY
+            var videoDefs = defs.filter(isVideo);
 
             function Section(title, children) {
               if (!children || !children.length) return null;
@@ -720,7 +760,6 @@
             function UrlInput(def) {
               if (HAS_USESELECT)
                 return el(PagePicker, { key: def.key, block: props, def: def });
-
               var val = fields[def.key];
               var curr =
                 val && typeof val === "object"
@@ -794,7 +833,6 @@
                 (props.attributes.fields &&
                   props.attributes.fields[fieldKey]) ||
                 "";
-
               function safe(s) {
                 return String(s || "").replace(/[^a-z0-9_-]/gi, "");
               }
@@ -802,18 +840,14 @@
                 props.clientId || Math.random().toString(36).slice(2, 8)
               );
               var uniqueId = "nowelt-" + instId + "-" + safe(fieldKey);
-
               var idRef = useRef(uniqueId);
               var taRef = useRef(null);
-
               useEffect(
                 function () {
                   if (!OldEditor || !OldEditor.initialize) return;
-
                   try {
                     OldEditor.remove(idRef.current);
                   } catch (e) {}
-
                   OldEditor.initialize(idRef.current, {
                     tinymce: {
                       wpautop: true,
@@ -824,7 +858,6 @@
                     quicktags: true,
                     mediaButtons: false,
                   });
-
                   var ed, poll;
                   function sync() {
                     var val =
@@ -837,7 +870,6 @@
                     next[fieldKey] = val || "";
                     props.setAttributes({ fields: next });
                   }
-
                   poll = setInterval(function () {
                     ed = window.tinymce && window.tinymce.get(idRef.current);
                     if (ed) {
@@ -846,10 +878,8 @@
                       ed.on("change keyup input setcontent", sync);
                     }
                   }, 50);
-
                   if (taRef.current)
                     taRef.current.addEventListener("input", sync);
-
                   return function () {
                     try {
                       OldEditor.remove(idRef.current);
@@ -861,7 +891,6 @@
                 },
                 [props.clientId, props.attributes.templateId, fieldKey]
               );
-
               return el(
                 "div",
                 { key: fieldKey, className: "now-elt-sec-item" },
@@ -910,7 +939,7 @@
                     ),
                   ];
 
-            // --- UI ----------------------------------------------------------
+            // --- Tabs content -------------------------------------------------
             function ContentTab() {
               var pickerRow = el(
                 "div",
@@ -924,7 +953,7 @@
                 Section(__("Formateret tekst", "nowonline"), richInputs),
                 Section(__("Tekster", "nowonline"), textInputs),
                 Section(__("Links", "nowonline"), linkInputs),
-                Section(__("Videoer", "nowonline"), videoInputs), // <— NY
+                Section(__("Videoer", "nowonline"), videoInputs),
                 Section(
                   __("Billeder", "nowonline"),
                   imageInputs.concat(galleryInputs)
@@ -932,22 +961,119 @@
               );
             }
 
-            function CanvasPreview() {
-              var tpl = tplById(templateId) || {};
-              var src = tpl.preview || tpl.thumb || "";
-              if (!src) return null;
-              return el("img", {
-                src: src,
-                alt: "",
-                draggable: false,
-                decoding: "async",
-                style: {
-                  display: "block",
-                  maxWidth: "100%",
-                  height: "auto",
-                  margin: "0 auto",
-                },
-              });
+            function DesignTab() {
+              return el(
+                "div",
+                {},
+                el(
+                  PanelBody,
+                  { title: __("Background", "nowonline"), initialOpen: true },
+                  el(
+                    "div",
+                    {
+                      style: { display: "flex", alignItems: "center", gap: 8 },
+                    },
+                    el(
+                      "div",
+                      { style: { minWidth: 120 } },
+                      __("Container bg", "nowonline")
+                    ),
+                    el(ColorPalette, {
+                      value: containerBg || "",
+                      onChange: function (v) {
+                        setAttr({ containerBg: v || "" });
+                      },
+                    }),
+                    el(TextControl, {
+                      value: containerBg || "",
+                      onChange: function (v) {
+                        setAttr({ containerBg: v || "" });
+                      },
+                      placeholder: __(
+                        "fx #000, rgb(), var(--token)",
+                        "nowonline"
+                      ),
+                      style: { maxWidth: 220 },
+                    })
+                  )
+                ),
+                el(
+                  PanelBody,
+                  {
+                    title: __("Target container", "nowonline"),
+                    initialOpen: false,
+                  },
+                  el(SelectControl, {
+                    label: __("Mode", "nowonline"),
+                    value: containerTargetMode,
+                    onChange: function (v) {
+                      setAttr({ containerTargetMode: v });
+                    },
+                    options: [
+                      {
+                        label: __("Auto (outer wrapper)", "nowonline"),
+                        value: "auto",
+                      },
+                      {
+                        label: __("Elementor data-id", "nowonline"),
+                        value: "data-id",
+                      },
+                      {
+                        label: __("CSS id (#id)", "nowonline"),
+                        value: "css_id",
+                      },
+                      {
+                        label: __("CSS class (.class)", "nowonline"),
+                        value: "css_class",
+                      },
+                      {
+                        label: __("Custom selector", "nowonline"),
+                        value: "selector",
+                      },
+                    ],
+                  }),
+                  containerTargetMode !== "auto"
+                    ? el(TextControl, {
+                        label: __("Value", "nowonline"),
+                        value: containerTarget || "",
+                        onChange: function (v) {
+                          setAttr({ containerTarget: v || "" });
+                        },
+                        placeholder:
+                          containerTargetMode === "data-id"
+                            ? __("e.g. e05f2aa", "nowonline")
+                            : containerTargetMode === "css_id"
+                            ? __("e.g. hero (without #)", "nowonline")
+                            : containerTargetMode === "css_class"
+                            ? __("e.g. section-hero (without .)", "nowonline")
+                            : __("e.g. .elementor-section .inner", "nowonline"),
+                      })
+                    : null
+                )
+              );
+            }
+
+            function BackgroundTab() {
+              return el(
+                "div",
+                {},
+                el(
+                  "div",
+                  { className: "now-elt-muted" },
+                  __("(Reserved)", "nowonline")
+                )
+              );
+            }
+            function AdvancedTab() {
+              return el(
+                "div",
+                {},
+                el(
+                  "div",
+                  { className: "now-elt-muted" },
+                  __("(Reserved)", "nowonline")
+                )
+              );
             }
 
             var tabsUI = TabPanel
@@ -978,7 +1104,11 @@
                     ],
                     initialTabName: "content",
                   },
-                  function () {
+                  function (tab) {
+                    if (!tab || !tab.name) return ContentTab();
+                    if (tab.name === "design") return DesignTab();
+                    if (tab.name === "background") return BackgroundTab();
+                    if (tab.name === "advanced") return AdvancedTab();
                     return ContentTab();
                   }
                 )
@@ -990,11 +1120,33 @@
                 (blockProps.className || "") + " now-elt-edit-root"
               ).trim(),
             });
+            // Editor preview of background color on wrapper
+            if (containerBg) {
+              rootProps.style = Object.assign({}, rootProps.style || {}, {
+                backgroundColor: containerBg,
+              });
+            }
 
             return el(
               "div",
               rootProps,
-              el(CanvasPreview, {}),
+              el(function CanvasPreview() {
+                var tpl = tplById(templateId) || {};
+                var src = tpl.preview || tpl.thumb || "";
+                if (!src) return null;
+                return el("img", {
+                  src: src,
+                  alt: "",
+                  draggable: false,
+                  decoding: "async",
+                  style: {
+                    display: "block",
+                    maxWidth: "100%",
+                    height: "auto",
+                    margin: "0 auto",
+                  },
+                });
+              }, {}),
               tabsUI,
               el(
                 InspectorControls,
