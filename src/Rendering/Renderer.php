@@ -45,7 +45,7 @@ final class Renderer
         echo '<style>'
             . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
             . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
-            // VIGTIGT: kun background-color (ellers nulstilles background-image)
+            // why: brug kun background-color for ikke at nulstille background-image
             . $targets . '{background-color:var(--now-bg-color)!important;}'
             . $overlayTargets . '{background-color:var(--now-bg-color)!important;}'
             . $btnSel . '{color:var(--now-btn-color)!important;border-color:var(--now-btn-bdc)!important;border-width:var(--now-btn-bdw)!important;border-radius:var(--now-btn-rad)!important;border-style:solid!important;}'
@@ -74,7 +74,7 @@ final class Renderer
             }
         }
 
-        // WHY: undgå mixed content når site går på SSL
+        // why: undgå mixed content når site går på SSL (interne http->https)
         if (is_ssl() && stripos($u, 'http://') === 0) {
             $homeHost = parse_url(home_url(), PHP_URL_HOST);
             $urlHost  = parse_url($u, PHP_URL_HOST);
@@ -102,6 +102,14 @@ final class Renderer
         if (preg_match('/^[0-9]*\.?[0-9]+$/', $v)) return $v . $defaultUnit;
         if (preg_match('/^[0-9]*\.?[0-9]+(px|rem|em|%|vh|vw|ch|ex)$/i', $v)) return $v;
         return '';
+    }
+
+    // spacing: ignorer "ingen"/"standard"
+    private static function sanitize_spacing(?string $v): string
+    {
+        $v = trim((string)$v);
+        if ($v === '' || strcasecmp($v,'ingen')===0 || strcasecmp($v,'standard')===0) return '';
+        return self::sanitize_length($v);
     }
 
     private static function sanitize_bg_pos(string $v): string
@@ -192,7 +200,7 @@ final class Renderer
             $type = self::norm_type($defs, $key);
 
             if ($type === 'text' && isset($bgKeysInHtml[$key])) {
-                $type = 'bg'; // WHY: nøgle bruges som bg i templaten
+                $type = 'bg'; // why: nøgle bruges som bg i templaten
             }
 
             if ($type !== 'img' && $type !== 'bg') continue;
@@ -768,6 +776,20 @@ final class Renderer
         $bgSize    = isset($attrs['bgSize'])      ? self::sanitize_bg_size((string)$attrs['bgSize'])            : '';
         $bgFixed   = !empty($attrs['bgFixed']);
 
+        // Responsive visibility + spacing
+        $hideDesktop = !empty($attrs['hideDesktop']);
+        $hideTablet  = !empty($attrs['hideTablet']);
+        $hideMobile  = !empty($attrs['hideMobile']);
+
+        $padTopDesktop    = self::sanitize_spacing($attrs['padTopDesktop']    ?? '');
+        $padBottomDesktop = self::sanitize_spacing($attrs['padBottomDesktop'] ?? '');
+        $padTopLaptop     = self::sanitize_spacing($attrs['padTopLaptop']     ?? '');
+        $padBottomLaptop  = self::sanitize_spacing($attrs['padBottomLaptop']  ?? '');
+        $padTopTablet     = self::sanitize_spacing($attrs['padTopTablet']     ?? '');
+        $padBottomTablet  = self::sanitize_spacing($attrs['padBottomTablet']  ?? '');
+        $padTopMobile     = self::sanitize_spacing($attrs['padTopMobile']     ?? '');
+        $padBottomMobile  = self::sanitize_spacing($attrs['padBottomMobile']  ?? '');
+
         $vars = [];
         if ($bgColor        !== '') $vars['--now-bg-color']  = $bgColor;
         if ($btnTextColor   !== '') $vars['--now-btn-color'] = $btnTextColor;
@@ -798,7 +820,39 @@ final class Renderer
             $html = do_shortcode('[elementor-template id="' . $tid . '"]');
         }
         if (!$html) {
-            return '<div class="nowonline-elt-wrapper"'.$styleAttr.'><div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"></div></div>';
+            // giver stadig data-id på tom wrapper (for hide/padding)
+            $uid = 'nowblk-' . uniqid();
+            $respCss = '';
+            if ($hideDesktop) $respCss .= '@media (min-width:1025px){[data-nowblk-id="'.$uid.'"]{display:none!important}}';
+            if ($hideTablet)  $respCss .= '@media (min-width:768px) and (max-width:1024px){[data-nowblk-id="'.$uid.'"]{display:none!important}}';
+            if ($hideMobile)  $respCss .= '@media (max-width:767px){[data-nowblk-id="'.$uid.'"]{display:none!important}}';
+            if ($padTopDesktop || $padBottomDesktop) {
+                $respCss .= '[data-nowblk-id="'.$uid.'"]{'
+                    . ($padTopDesktop    ? 'padding-top:'.$padTopDesktop.';' : '')
+                    . ($padBottomDesktop ? 'padding-bottom:'.$padBottomDesktop.';' : '')
+                    . '}';
+            }
+            if ($padTopLaptop || $padBottomLaptop) {
+                $respCss .= '@media (max-width:1440px){[data-nowblk-id="'.$uid.'"]{'
+                    . ($padTopLaptop    ? 'padding-top:'.$padTopLaptop.';' : '')
+                    . ($padBottomLaptop ? 'padding-bottom:'.$padBottomLaptop.';' : '')
+                    . '}}';
+            }
+            if ($padTopTablet || $padBottomTablet) {
+                $respCss .= '@media (max-width:1024px){[data-nowblk-id="'.$uid.'"]{'
+                    . ($padTopTablet    ? 'padding-top:'.$padTopTablet.';' : '')
+                    . ($padBottomTablet ? 'padding-bottom:'.$padBottomTablet.';' : '')
+                    . '}}';
+            }
+            if ($padTopMobile || $padBottomMobile) {
+                $respCss .= '@media (max-width:767px){[data-nowblk-id="'.$uid.'"]{'
+                    . ($padTopMobile    ? 'padding-top:'.$padTopMobile.';' : '')
+                    . ($padBottomMobile ? 'padding-bottom:'.$padBottomMobile.';' : '')
+                    . '}}';
+            }
+
+            $styleTag = $respCss ? '<style>'.$respCss.'</style>' : '';
+            return '<div class="nowonline-elt-wrapper"'.$styleAttr.' data-nowblk-id="'.$uid.'">'.$styleTag.'<div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"></div></div>';
         }
 
         $html = self::normalize_elementor_attributes($html);
@@ -962,10 +1016,47 @@ final class Renderer
             'video'     => $bgVideo,
         ], $videoMap);
 
+        // Responsive CSS: hide/padding pr. device
+        $uid = 'nowblk-' . uniqid();
+        $sel = '[data-nowblk-id="'.$uid.'"]';
+        $respCss = '';
+
+        if ($padTopDesktop || $padBottomDesktop) {
+            $respCss .= $sel.'{'
+                . ($padTopDesktop    ? 'padding-top:'.$padTopDesktop.';' : '')
+                . ($padBottomDesktop ? 'padding-bottom:'.$padBottomDesktop.';' : '')
+                . '}';
+        }
+        if ($padTopLaptop || $padBottomLaptop) {
+            $respCss .= '@media (max-width:1440px){'.$sel.'{'
+                . ($padTopLaptop    ? 'padding-top:'.$padTopLaptop.';' : '')
+                . ($padBottomLaptop ? 'padding-bottom:'.$padBottomLaptop.';' : '')
+                . '}}';
+        }
+        if ($padTopTablet || $padBottomTablet) {
+            $respCss .= '@media (max-width:1024px){'.$sel.'{'
+                . ($padTopTablet    ? 'padding-top:'.$padTopTablet.';' : '')
+                . ($padBottomTablet ? 'padding-bottom:'.$padBottomTablet.';' : '')
+                . '}}';
+        }
+        if ($padTopMobile || $padBottomMobile) {
+            $respCss .= '@media (max-width:767px){'.$sel.'{'
+                . ($padTopMobile    ? 'padding-top:'.$padTopMobile.';' : '')
+                . ($padBottomMobile ? 'padding-bottom:'.$padBottomMobile.';' : '')
+                . '}}';
+        }
+
+        if ($hideDesktop) $respCss .= '@media (min-width:1025px){'.$sel.'{display:none!important}}';
+        if ($hideTablet)  $respCss .= '@media (min-width:768px) and (max-width:1024px){'.$sel.'{display:none!important}}';
+        if ($hideMobile)  $respCss .= '@media (max-width:767px){'.$sel.'{display:none!important}}';
+
+        $styleResponsiveTag = $respCss ? '<style>'.$respCss.'</style>' : '';
+
         $data_attr = !empty($linkMap) ? ' data-nowlinks=\'' . esc_attr( wp_json_encode($linkMap) ) . '\'' : '';
         if ($isHeader) $data_attr .= ' data-nowelt-is-header="1"';
 
-        return '<div class="nowonline-elt-wrapper"'.$styleAttr.'>'
+        return '<div class="nowonline-elt-wrapper"'.$styleAttr.' data-nowblk-id="'.$uid.'">'
+             . $styleResponsiveTag
              . '<div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"' . $data_attr . '>'
              . $html
              . '</div></div>';

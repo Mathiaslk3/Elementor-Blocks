@@ -707,7 +707,7 @@
             btnBorderWidth: { type: "string", default: "" },
             btnBorderRadius: { type: "string", default: "" },
 
-            // --- NYT: Background media / options ---
+            // Background media / options
             bgVideo: { type: "string", default: "" },
             bgImg: { type: "string", default: "" },
             bgImgTablet: { type: "string", default: "" },
@@ -715,6 +715,21 @@
             bgPos: { type: "string", default: "center center" },
             bgSize: { type: "string", default: "cover" },
             bgFixed: { type: "boolean", default: false },
+
+            // --- NEW: Advanced / visibility ---
+            hideDesktop: { type: "boolean", default: false },
+            hideTablet: { type: "boolean", default: false },
+            hideMobile: { type: "boolean", default: false },
+
+            // --- NEW: Responsive paddings ---
+            padTopDesktop: { type: "string", default: "" },
+            padBottomDesktop: { type: "string", default: "" },
+            padTopLaptop: { type: "string", default: "" },
+            padBottomLaptop: { type: "string", default: "" },
+            padTopTablet: { type: "string", default: "" },
+            padBottomTablet: { type: "string", default: "" },
+            padTopMobile: { type: "string", default: "" },
+            padBottomMobile: { type: "string", default: "" },
 
             // legacy (ikke brugt i UI)
             containerTargetMode: { type: "string", default: "auto" },
@@ -733,7 +748,7 @@
             var btnBorderWidth = attrs.btnBorderWidth || "";
             var btnBorderRadius = attrs.btnBorderRadius || "";
 
-            // baggrunds-attributter (NYT)
+            // baggrunds-attributter
             var bgVideo = attrs.bgVideo || "";
             var bgImg = attrs.bgImg || "";
             var bgImgTablet = attrs.bgImgTablet || "";
@@ -741,6 +756,20 @@
             var bgPos = attrs.bgPos || "center center";
             var bgSize = attrs.bgSize || "cover";
             var bgFixed = !!attrs.bgFixed;
+
+            // --- NEW: Advanced values ---
+            var hideDesktop = !!attrs.hideDesktop;
+            var hideTablet = !!attrs.hideTablet;
+            var hideMobile = !!attrs.hideMobile;
+
+            var padTopDesktop = attrs.padTopDesktop || "";
+            var padBottomDesktop = attrs.padBottomDesktop || "";
+            var padTopLaptop = attrs.padTopLaptop || "";
+            var padBottomLaptop = attrs.padBottomLaptop || "";
+            var padTopTablet = attrs.padTopTablet || "";
+            var padBottomTablet = attrs.padBottomTablet || "";
+            var padTopMobile = attrs.padTopMobile || "";
+            var padBottomMobile = attrs.padBottomMobile || "";
 
             // Persistente faner
             var _tab = useState("content"),
@@ -1300,7 +1329,7 @@
               );
             }
 
-            // ====== NY: Baggrunds-fanen (video/billede/pos/size/fixed + tablet/mobil) ======
+            // ====== Baggrunds-fanen ======
             function BackgroundTab() {
               var posOpts = [
                 "center center",
@@ -1580,14 +1609,184 @@
               );
             }
 
+            // ====== NEW: Advanced fanen (visibility + responsive spacing) ====
             function AdvancedTab() {
+              function unitHelp() {
+                return __(
+                  "Eksempler: 80px, 6rem, 10vh, 8% — tom = ingen ændring",
+                  "nowonline"
+                );
+              }
+              function RowTwo(aLabel, aKey, aVal, bLabel, bKey, bVal) {
+                return el(
+                  "div",
+                  {
+                    style: {
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 8,
+                      marginBottom: 8,
+                    },
+                  },
+                  el(TextControl, {
+                    label: aLabel,
+                    value: aVal || "",
+                    onChange: function (v) {
+                      var next = {};
+                      next[aKey] = (v || "").trim();
+                      setAttr(next);
+                    },
+                    placeholder: "fx 80px",
+                    help: unitHelp(),
+                  }),
+                  el(TextControl, {
+                    label: bLabel,
+                    value: bVal || "",
+                    onChange: function (v) {
+                      var next = {};
+                      next[bKey] = (v || "").trim();
+                      setAttr(next);
+                    },
+                    placeholder: "fx 80px",
+                    help: unitHelp(),
+                  })
+                );
+              }
+              function ResetBtn(keys) {
+                return el(
+                  Button,
+                  {
+                    className: "button is-secondary",
+                    onClick: function () {
+                      var next = {};
+                      keys.forEach(function (k) {
+                        next[k] = "";
+                      });
+                      setAttr(next);
+                    },
+                    style: { marginTop: 4 },
+                  },
+                  __("Nulstil", "nowonline")
+                );
+              }
+
               return el(
                 "div",
                 {},
+                // Visibility
+                el(
+                  PanelBody,
+                  { title: __("Visibility", "nowonline"), initialOpen: true },
+                  el(CheckboxControl, {
+                    label: __("Hide on Desktop", "nowonline"),
+                    checked: !!hideDesktop,
+                    onChange: function (v) {
+                      setAttr({ hideDesktop: !!v });
+                    },
+                  }),
+                  el(CheckboxControl, {
+                    label: __("Hide on Tablet", "nowonline"),
+                    checked: !!hideTablet,
+                    onChange: function (v) {
+                      setAttr({ hideTablet: !!v });
+                    },
+                  }),
+                  el(CheckboxControl, {
+                    label: __("Hide on Mobile", "nowonline"),
+                    checked: !!hideMobile,
+                    onChange: function (v) {
+                      setAttr({ hideMobile: !!v });
+                    },
+                  }),
+                  el(
+                    "div",
+                    { className: "now-elt-muted", style: { marginTop: 8 } },
+                    __(
+                      "Skjuler hele blokken pr. device. Renderes via server (frontend).",
+                      "nowonline"
+                    )
+                  )
+                ),
+
+                // Spacing – Desktop
+                el(
+                  PanelBody,
+                  {
+                    title: __("Spacing – Desktop", "nowonline"),
+                    initialOpen: true,
+                  },
+                  RowTwo(
+                    __("Padding top (desktop)", "nowonline"),
+                    "padTopDesktop",
+                    padTopDesktop,
+                    __("Padding bottom (desktop)", "nowonline"),
+                    "padBottomDesktop",
+                    padBottomDesktop
+                  ),
+                  ResetBtn(["padTopDesktop", "padBottomDesktop"])
+                ),
+
+                // Spacing – Laptop
+                el(
+                  PanelBody,
+                  {
+                    title: __("Spacing – Laptop (≤1440px)", "nowonline"),
+                    initialOpen: false,
+                  },
+                  RowTwo(
+                    __("Padding top (laptop)", "nowonline"),
+                    "padTopLaptop",
+                    padTopLaptop,
+                    __("Padding bottom (laptop)", "nowonline"),
+                    "padBottomLaptop",
+                    padBottomLaptop
+                  ),
+                  ResetBtn(["padTopLaptop", "padBottomLaptop"])
+                ),
+
+                // Spacing – Tablet
+                el(
+                  PanelBody,
+                  {
+                    title: __("Spacing – Tablet (≤1024px)", "nowonline"),
+                    initialOpen: false,
+                  },
+                  RowTwo(
+                    __("Padding top (tablet)", "nowonline"),
+                    "padTopTablet",
+                    padTopTablet,
+                    __("Padding bottom (tablet)", "nowonline"),
+                    "padBottomTablet",
+                    padBottomTablet
+                  ),
+                  ResetBtn(["padTopTablet", "padBottomTablet"])
+                ),
+
+                // Spacing – Mobile
+                el(
+                  PanelBody,
+                  {
+                    title: __("Spacing – Mobile (≤767px)", "nowonline"),
+                    initialOpen: false,
+                  },
+                  RowTwo(
+                    __("Padding top (mobile)", "nowonline"),
+                    "padTopMobile",
+                    padTopMobile,
+                    __("Padding bottom (mobile)", "nowonline"),
+                    "padBottomMobile",
+                    padBottomMobile
+                  ),
+                  ResetBtn(["padTopMobile", "padBottomMobile"])
+                ),
+
                 el(
                   "div",
-                  { className: "now-elt-muted" },
-                  __("(Reserved)", "nowonline")
+                  { className: "now-elt-muted", style: { marginTop: 8 } },
+                  __(
+                    "Tip: Brug enheder som px, rem, vh, % osv. Tomt felt = ingen override.",
+                    "nowonline"
+                  )
                 )
               );
             }
