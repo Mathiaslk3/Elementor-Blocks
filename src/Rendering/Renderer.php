@@ -6,6 +6,10 @@ use NowOnline\EltBlocks\Services\PlaceholderScanner;
 
 if (!defined('ABSPATH')) { exit; }
 
+// libxml constants may be missing on some hosts (PHP8 -> fatal if used undefined)
+if (!defined('LIBXML_HTML_NOIMPLIED')) define('LIBXML_HTML_NOIMPLIED', 0);
+if (!defined('LIBXML_HTML_NODEFDTD')) define('LIBXML_HTML_NODEFDTD', 0);
+
 final class Renderer
 {
     private PlaceholderScanner $scanner;
@@ -25,57 +29,29 @@ final class Renderer
     public function frontend_css(): void
     {
         $sel = apply_filters('nowonline_elt_header_hide_selectors', [
-            'header[role="banner"]',
-            '.elementor-location-header',
-            '#masthead',
-            '.site-header',
-            'header.site-header',
-            'header.header',
-            '.ast-desktop-header',
-            '.ast-mobile-header-wrap',
-            '.oceanwp-header',
-            '.main-header',
-            '.header-main',
-            '.gen-header',
-            '#header'
+            'header[role="banner"]','.elementor-location-header','#masthead','.site-header',
+            'header.site-header','header.header','.ast-desktop-header','.ast-mobile-header-wrap',
+            '.oceanwp-header','.main-header','.header-main','.gen-header','#header'
         ]);
         $prefA = array_map(static fn($s) => 'body.nowelt-replace-header ' . $s, $sel);
         $prefB = array_map(static fn($s) => 'html.nowelt-replace-header ' . $s, $sel);
         $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
 
-        // Vi understøtter både gamle og nye markører + farver overlayet også
-        $targets =
-            '.nowonline-elt-wrapper [data-now-bg],' .
-            '.nowonline-elt-wrapper .now-bg,' .
-            '.nowonline-elt-wrapper [data-nowonline-bg],' .
-            '.nowonline-elt-wrapper .nowonline-bg';
-
-        $overlayTargets =
-            $targets . '>.elementor-background-overlay,' .
-            $targets . ' .elementor-background-overlay';
-
-        // Knap-selector (scopet til modulet for at undgå clash)
+        $targets = '.nowonline-elt-wrapper [data-now-bg],.nowonline-elt-wrapper .now-bg,'
+                 . '.nowonline-elt-wrapper [data-nowonline-bg],.nowonline-elt-wrapper .nowonline-bg';
+        $overlayTargets = $targets . '>.elementor-background-overlay,' . $targets . ' .elementor-background-overlay';
         $btnSel = '.nowonline-elt-wrapper .nowonline-elt-module [id="now-link-link"]';
 
         echo '<style>'
             . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
             . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
-            // Containeren
-            . $targets . '{background:var(--now-bg-color)!important;background-color:var(--now-bg-color)!important;}'
-            // Eventuelt Elementor-overlay på containeren
-            . $overlayTargets . '{background:var(--now-bg-color)!important;opacity:1!important;}'
-            // Knap-styling via variabler
-            . $btnSel . '{'
-                . 'color:var(--now-btn-color)!important;'
-                . 'border-color:var(--now-btn-bdc)!important;'
-                . 'border-width:var(--now-btn-bdw)!important;'
-                . 'border-radius:var(--now-btn-rad)!important;'
-                . 'border-style:solid!important;'
-            . '}'
-            . $btnSel . ':hover,' . $btnSel . ':focus{'
-                . 'color:var(--now-btn-color)!important;'
-                . 'border-color:var(--now-btn-bdc)!important;'
-            . '}'
+            // VIGTIGT: kun background-color (ellers nulstilles background-image)
+            . $targets . '{background-color:var(--now-bg-color)!important;}'
+            . $overlayTargets . '{background-color:var(--now-bg-color)!important;}'
+            . $btnSel . '{color:var(--now-btn-color)!important;border-color:var(--now-btn-bdc)!important;border-width:var(--now-btn-bdw)!important;border-radius:var(--now-btn-rad)!important;border-style:solid!important;}'
+            . $btnSel . ':hover,' . $btnSel . ':focus{color:var(--now-btn-color)!important;border-color:var(--now-btn-bdc)!important;}'
+            . '.nowonline-elt-wrapper .nowelt-has-bgvid{position:relative;overflow:hidden;}'
+            . '.nowonline-elt-wrapper .nowelt-bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;}'
             . $hideCss
             . '</style>';
     }
@@ -84,10 +60,12 @@ final class Renderer
     {
         $u = trim($u);
         if ($u === '') return $u;
+
         $u = str_ireplace(['http//','https//'], ['http://','https://'], $u);
         $u = preg_replace('#^(https?://)(https?://)+#i', '$1', $u);
         if (strpos($u, '//') === 0) $u = 'https:' . $u;
         if (stripos($u, 'www.') === 0) $u = 'https://' . $u;
+
         if (!preg_match('#^[a-z][a-z0-9+\-.]*://#i', $u)) {
             if ($u[0] === '/') {
                 $u = rtrim(home_url(), '/') . $u;
@@ -95,22 +73,27 @@ final class Renderer
                 $u = (is_ssl() ? 'https' : 'http') . '://' . $u;
             }
         }
+
+        // WHY: undgå mixed content når site går på SSL
+        if (is_ssl() && stripos($u, 'http://') === 0) {
+            $homeHost = parse_url(home_url(), PHP_URL_HOST);
+            $urlHost  = parse_url($u, PHP_URL_HOST);
+            if (!$urlHost || !$homeHost || strcasecmp((string)$urlHost, (string)$homeHost) === 0) {
+                $u = preg_replace('#^http://#i', 'https://', $u);
+            }
+        }
+
         return $u;
     }
 
-    // Kun rene farver – ingen gradients
     private static function sanitize_color(string $v): string
     {
         $v = trim($v);
         if ($v === '') return '';
-        $ok = preg_match(
-            '/^(?:#[0-9a-fA-F]{3,8}|(?:rgb|hsl)a?\(\s*[^()]*\)|var\(\s*--[a-zA-Z0-9_-]+\s*\)|[a-zA-Z]+)$/',
-            $v
-        );
+        $ok = preg_match('/^(?:#[0-9a-fA-F]{3,8}|(?:rgb|hsl)a?\(\s*[^()]*\)|var\(\s*--[a-zA-Z0-9_-]+\s*\)|[a-zA-Z]+)$/', $v);
         return $ok ? $v : '';
     }
 
-    // NY: sanér CSS-længder (px, rem, em, %, osv.) – rene tal får 'px'
     private static function sanitize_length(string $v, string $defaultUnit = 'px'): string
     {
         $v = trim($v);
@@ -118,6 +101,25 @@ final class Renderer
         if (preg_match('/^0+$/', $v)) return '0';
         if (preg_match('/^[0-9]*\.?[0-9]+$/', $v)) return $v . $defaultUnit;
         if (preg_match('/^[0-9]*\.?[0-9]+(px|rem|em|%|vh|vw|ch|ex)$/i', $v)) return $v;
+        return '';
+    }
+
+    private static function sanitize_bg_pos(string $v): string
+    {
+        $v = strtolower(trim($v));
+        if ($v === '') return '';
+        $allowed = ['center center','top center','bottom center','center left','center right','top left','top right','bottom left','bottom right','center','top','bottom','left','right'];
+        if (in_array($v, $allowed, true)) return $v;
+        if (preg_match('#^[0-9]+%(\s+[0-9]+%)$#', $v)) return $v;
+        return '';
+    }
+
+    private static function sanitize_bg_size(string $v): string
+    {
+        $v = strtolower(trim($v));
+        if ($v === '') return '';
+        if (in_array($v, ['cover','contain','auto'], true)) return $v;
+        if (preg_match('#^[0-9]*\.?[0-9]+(px|%|rem|em|vh|vw)(\s+[0-9]*\.?[0-9]+(px|%|rem|em|vh|vw))?$#i', $v)) return $v;
         return '';
     }
 
@@ -166,16 +168,39 @@ final class Renderer
         return $out;
     }
 
-    private static function build_media_maps(array $defs, array $fields): array
+    /** NY: Opdag bg‐nøgler direkte i HTML (så data-now-bg|hero virker uden scanner‐defs) */
+    private static function discover_bg_keys_in_html(string $html): array
+    {
+        $keys = [];
+        if (preg_match_all('/\bdata-now-bg=["\']([a-zA-Z0-9_-]+)["\']/i', $html, $m)) {
+            foreach ($m[1] as $k) $keys[strtolower($k)] = true;
+        }
+        if (preg_match_all('/\bnow-bg-([a-z0-9_-]+)\b/i', $html, $m)) {
+            foreach ($m[1] as $k) $keys[strtolower($k)] = true;
+        }
+        return array_keys($keys);
+    }
+
+    /** Ændret: modtager $html og tvinger type=bg for nøgler brugt i HTML */
+    private static function build_media_maps(array $defs, array $fields, string $html): array
     {
         $img = $bg = [];
+        $bgKeysInHtml = array_flip(self::discover_bg_keys_in_html($html));
+
         foreach ($fields as $k => $v) {
             $key  = strtolower((string)$k);
             $type = self::norm_type($defs, $key);
+
+            if ($type === 'text' && isset($bgKeysInHtml[$key])) {
+                $type = 'bg'; // WHY: nøgle bruges som bg i templaten
+            }
+
             if ($type !== 'img' && $type !== 'bg') continue;
+
             $val = is_array($v) ? (string)($v['url'] ?? '') : (string)$v;
             $url = esc_url(self::fix_url($val));
             if ($url === '') continue;
+
             if ($type === 'img') $img[$key] = $url;
             else                 $bg[$key]  = $url;
         }
@@ -244,88 +269,97 @@ final class Renderer
         return $html;
     }
 
+    /** Safe DOM wrapper */
+    private static function safeDom(string $html, callable $fn): string
+    {
+        if (!class_exists('\DOMDocument')) return $html;
+        try {
+            $doc = new \DOMDocument();
+            \libxml_use_internal_errors(true);
+            $doc->loadHTML('<?xml encoding="utf-8"?><div id="__nowroot">'.$html.'</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            \libxml_clear_errors();
+            $xpath = new \DOMXPath($doc);
+            $root  = $doc->getElementById('__nowroot');
+            $fn($doc, $xpath, $root);
+            $out = '';
+            foreach ($root->childNodes as $child) { $out .= $doc->saveHTML($child); }
+            return $out;
+        } catch (\Throwable $e) {
+            if (function_exists('error_log')) error_log('[NowOnline EltBlocks] DOM fail: '.$e->getMessage());
+            return $html;
+        }
+    }
+
     private static function rewrite_media_dom(string $html, array $imgMap, array $bgMap): string
     {
         if (empty($imgMap) && empty($bgMap)) return $html;
-        if (!class_exists('\DOMDocument')) return $html;
+        return self::safeDom($html, function(\DOMDocument $doc, \DOMXPath $xpath, \DOMElement $root) use ($imgMap, $bgMap) {
+            $wipe = function(\DOMElement $el, array $names) {
+                foreach ($names as $n) if ($el->hasAttribute($n)) $el->removeAttribute($n);
+            };
+            $setBg = function(\DOMElement $el, string $url) {
+                $style = $el->getAttribute('style');
+                $style = preg_replace('/background-image\s*:\s*[^;]+;?/i', '', (string)$style);
+                $style = rtrim(trim((string)$style), '; ');
+                if ($style !== '') $style .= '; ';
+                $style .= 'background-image:url(' . esc_url($url) . ')';
+                $el->setAttribute('style', $style);
+            };
 
-        $doc = new \DOMDocument();
-        \libxml_use_internal_errors(true);
-        $doc->loadHTML('<?xml encoding="utf-8"?><div id="__nowroot">'.$html.'</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-        \libxml_clear_errors();
-
-        $xpath = new \DOMXPath($doc);
-        $root  = $doc->getElementById('__nowroot');
-
-        $wipe = function(\DOMElement $el, array $names) {
-            foreach ($names as $n) if ($el->hasAttribute($n)) $el->removeAttribute($n);
-        };
-        $setBg = function(\DOMElement $el, string $url) {
-            $style = $el->getAttribute('style');
-            $style = preg_replace('/background-image\s*:\s*[^;]+;?/i', '', (string)$style);
-            $style = rtrim(trim((string)$style), '; ');
-            if ($style !== '') $style .= '; ';
-            $style .= 'background-image:url(' . esc_url($url) . ')';
-            $el->setAttribute('style', $style);
-        };
-
-        if (!empty($imgMap)) {
-            foreach ($xpath->query('//*[@data-now-img or @data-now-image]') as $wrap) {
-                /** @var \DOMElement $wrap */
-                $key = strtolower($wrap->getAttribute('data-now-img') ?: $wrap->getAttribute('data-now-image'));
-                if ($key && isset($imgMap[$key])) {
-                    $url = $imgMap[$key];
-                    $img = $xpath->query('.//img', $wrap)->item(0);
-                    if ($img instanceof \DOMElement) {
-                        $wipe($img, ['src','srcset','sizes','data-src','data-srcset','data-lazy-src','data-lazy-srcset']);
-                        $img->setAttribute('src', esc_url($url));
+            if (!empty($imgMap)) {
+                foreach ($xpath->query('//*[@data-now-img or @data-now-image]') as $wrap) {
+                    /** @var \DOMElement $wrap */
+                    $key = strtolower($wrap->getAttribute('data-now-img') ?: $wrap->getAttribute('data-now-image'));
+                    if ($key && isset($imgMap[$key])) {
+                        $url = $imgMap[$key];
+                        $img = $xpath->query('.//img', $wrap)->item(0);
+                        if ($img instanceof \DOMElement) {
+                            $wipe($img, ['src','srcset','sizes','data-src','data-srcset','data-lazy-src','data-lazy-srcset']);
+                            $img->setAttribute('src', esc_url($url));
+                        }
+                        foreach ($xpath->query('.//source', $wrap) as $src) {
+                            /** @var \DOMElement $src */
+                            $wipe($src, ['srcset','data-srcset']);
+                            $src->setAttribute('srcset', esc_url($url));
+                        }
                     }
-                    foreach ($xpath->query('.//source', $wrap) as $src) {
-                        /** @var \DOMElement $src */
-                        $wipe($src, ['srcset','data-srcset']);
-                        $src->setAttribute('srcset', esc_url($url));
+                }
+                foreach ($xpath->query('//*[contains(@class,"now-img-") or contains(@class,"now-image-")]') as $wrap) {
+                    /** @var \DOMElement $wrap */
+                    $class = ' ' . $wrap->getAttribute('class') . ' ';
+                    if (preg_match('/\bnow-(?:img|image)-([a-z0-9_-]+)\b/i', $class, $m)) {
+                        $key = strtolower($m[1]);
+                        $url = $imgMap[$key] ?? '';
+                        if ($url === '') continue;
+                        $img = $xpath->query('.//img', $wrap)->item(0);
+                        if ($img instanceof \DOMElement) {
+                            $wipe($img, ['src','srcset','sizes','data-src','data-srcset','data-lazy-src','data-lazy-srcset']);
+                            $img->setAttribute('src', esc_url($url));
+                        }
+                        foreach ($xpath->query('.//source', $wrap) as $src) {
+                            $wipe($src, ['srcset','data-srcset']);
+                            $src->setAttribute('srcset', esc_url($url));
+                        }
                     }
                 }
             }
-            foreach ($xpath->query('//*[contains(@class,"now-img-") or contains(@class,"now-image-")]') as $wrap) {
-                /** @var \DOMElement $wrap */
-                $class = ' ' . $wrap->getAttribute('class') . ' ';
-                if (preg_match('/\bnow-(?:img|image)-([a-z0-9_-]+)\b/i', $class, $m)) {
-                    $key = strtolower($m[1]);
-                    $url = $imgMap[$key] ?? '';
-                    if ($url === '') continue;
-                    $img = $xpath->query('.//img', $wrap)->item(0);
-                    if ($img instanceof \DOMElement) {
-                        $wipe($img, ['src','srcset','sizes','data-src','data-srcset','data-lazy-src','data-lazy-srcset']);
-                        $img->setAttribute('src', esc_url($url));
-                    }
-                    foreach ($xpath->query('.//source', $wrap) as $src) {
-                        $wipe($src, ['srcset','data-srcset']);
-                        $src->setAttribute('srcset', esc_url($url));
+
+            if (!empty($bgMap)) {
+                foreach ($xpath->query('//*[@data-now-bg]') as $el) {
+                    /** @var \DOMElement $el */
+                    $key = strtolower($el->getAttribute('data-now-bg'));
+                    if ($key && isset($bgMap[$key])) $setBg($el, $bgMap[$key]);
+                }
+                foreach ($xpath->query('//*[contains(@class,"now-bg-")]') as $el) {
+                    /** @var \DOMElement $el */
+                    $class = ' ' . $el->getAttribute('class') . ' ';
+                    if (preg_match('/\bnow-bg-([a-z0-9_-]+)\b/i', $class, $m)) {
+                        $key = strtolower($m[1]);
+                        if (isset($bgMap[$key])) $setBg($el, $bgMap[$key]);
                     }
                 }
             }
-        }
-
-        if (!empty($bgMap)) {
-            foreach ($xpath->query('//*[@data-now-bg]') as $el) {
-                /** @var \DOMElement $el */
-                $key = strtolower($el->getAttribute('data-now-bg'));
-                if ($key && isset($bgMap[$key])) $setBg($el, $bgMap[$key]);
-            }
-            foreach ($xpath->query('//*[contains(@class,"now-bg-")]') as $el) {
-                /** @var \DOMElement $el */
-                $class = ' ' . $el->getAttribute('class') . ' ';
-                if (preg_match('/\bnow-bg-([a-z0-9_-]+)\b/i', $class, $m)) {
-                    $key = strtolower($m[1]);
-                    if (isset($bgMap[$key])) $setBg($el, $bgMap[$key]);
-                }
-            }
-        }
-
-        $out = '';
-        foreach ($root->childNodes as $child) { $out .= $doc->saveHTML($child); }
-        return $out;
+        });
     }
 
     private static function parse_elementor_settings(\DOMElement $el): array
@@ -384,123 +418,198 @@ final class Renderer
 
     private static function rewrite_galleries_dom(string $html, array $galMap): string
     {
-        if (empty($galMap) || !class_exists('\DOMDocument')) return $html;
+        if (empty($galMap)) return $html;
+        return self::safeDom($html, function(\DOMDocument $doc, \DOMXPath $xpath, \DOMElement $root) use ($galMap) {
+            $nodes = $xpath->query('//*[@data-now-gallery or @data-now-galleri or contains(@class,"now-gallery-") or contains(@class,"now-galleri-")]');
+            foreach ($nodes as $el) {
+                /** @var \DOMElement $el */
+                $key = strtolower($el->getAttribute('data-now-gallery') ?: $el->getAttribute('data-now-galleri'));
+                if ($key === '') {
+                    $cls = ' ' . $el->getAttribute('class') . ' ';
+                    if (preg_match('/\bnow-(?:gallery|galleri)-([a-z0-9_-]+)\b/i', $cls, $m)) $key = strtolower($m[1]);
+                }
+                if ($key === '' || empty($galMap[$key])) continue;
+                $urls = $galMap[$key];
 
-        $doc = new \DOMDocument();
-        \libxml_use_internal_errors(true);
-        $doc->loadHTML('<?xml encoding="utf-8"?><div id="__nowroot">'.$html.'</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-        \libxml_clear_errors();
+                $settings    = self::parse_elementor_settings($el);
+                $lazyDefault = !empty($settings['lazyload']) && ($settings['lazyload'] === 'yes' || $settings['lazyload'] === true);
 
-        $xpath = new \DOMXPath($doc);
-        $root  = $doc->getElementById('__nowroot');
+                $wrapper = $xpath->query('.//*[contains(concat(" ", normalize-space(@class), " "), " swiper-wrapper ")]', $el)->item(0);
+                $proto   = null;
+                if ($wrapper instanceof \DOMElement) {
+                    $protoList = $xpath->query('.//div[contains(concat(" ", normalize-space(@class), " "), " swiper-slide ")]', $wrapper);
+                    if ($protoList && $protoList->length) $proto = $protoList->item(0);
+                }
 
-        $nodes = $xpath->query('//*[@data-now-gallery or @data-now-galleri or contains(@class,"now-gallery-") or contains(@class,"now-galleri-")]');
-        foreach ($nodes as $el) {
-            /** @var \DOMElement $el */
-            $key = strtolower(
-                $el->getAttribute('data-now-gallery')
-                ?: $el->getAttribute('data-now-galleri')
-            );
-            if ($key === '') {
-                $cls = ' ' . $el->getAttribute('class') . ' ';
-                if (preg_match('/\bnow-(?:gallery|galleri)-([a-z0-9_-]+)\b/i', $cls, $m)) {
-                    $key = strtolower($m[1]);
+                if ($wrapper instanceof \DOMElement) {
+                    while ($wrapper->firstChild) $wrapper->removeChild($wrapper->firstChild);
+                    foreach ($urls as $u) {
+                        $wrapper->appendChild(self::build_slide_from_prototype($doc, $proto, $u, $lazyDefault));
+                    }
+                } else {
+                    while ($el->firstChild) $el->removeChild($el->firstChild);
+                    $grid = $doc->createElement('div');
+                    $grid->setAttribute('class', 'nowonline-elt-gallery');
+                    foreach ($urls as $u) {
+                        $img = $doc->createElement('img');
+                        $img->setAttribute('decoding','async');
+                        $img->setAttribute('src', esc_url($u));
+                        $img->setAttribute('alt','');
+                        $grid->appendChild($img);
+                    }
+                    $el->appendChild($grid);
                 }
             }
-            if ($key === '' || empty($galMap[$key])) continue;
-            $urls = $galMap[$key];
-
-            $settings    = self::parse_elementor_settings($el);
-            $lazyDefault = !empty($settings['lazyload']) && ($settings['lazyload'] === 'yes' || $settings['lazyload'] === true);
-
-            $wrapper = $xpath->query('.//*[contains(concat(" ", normalize-space(@class), " "), " swiper-wrapper ")]', $el)->item(0);
-            $proto   = null;
-            if ($wrapper instanceof \DOMElement) {
-                $protoList = $xpath->query('.//div[contains(concat(" ", normalize-space(@class), " "), " swiper-slide ")]', $wrapper);
-                if ($protoList && $protoList->length) $proto = $protoList->item(0);
-            }
-
-            if ($wrapper instanceof \DOMElement) {
-                while ($wrapper->firstChild) $wrapper->removeChild($wrapper->firstChild);
-                foreach ($urls as $u) {
-                    $wrapper->appendChild(self::build_slide_from_prototype($doc, $proto, $u, $lazyDefault));
-                }
-            } else {
-                while ($el->firstChild) $el->removeChild($el->firstChild);
-                $grid = $doc->createElement('div');
-                $grid->setAttribute('class', 'nowonline-elt-gallery');
-                foreach ($urls as $u) {
-                    $img = $doc->createElement('img');
-                    $img->setAttribute('decoding','async');
-                    $img->setAttribute('src', esc_url($u));
-                    $img->setAttribute('alt','');
-                    $grid->appendChild($img);
-                }
-                $el->appendChild($grid);
-            }
-        }
-
-        $out = '';
-        foreach ($root->childNodes as $child) $out .= $doc->saveHTML($child);
-        return $out;
+        });
     }
 
-    /** Sæt bg-farve inline på .nowonline-bg/[data-nowonline-bg] og på evt. overlay-barn */
+    /** Sæt kun background-color inline (bevar background-image) */
     private static function apply_bg_color_inline(string $html, string $color): string
     {
         if ($color === '') return $html;
-
-        if (class_exists('\DOMDocument')) {
-            $doc = new \DOMDocument();
-            \libxml_use_internal_errors(true);
-            $doc->loadHTML('<?xml encoding="utf-8"?><div id="__nowroot">'.$html.'</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-            \libxml_clear_errors();
-
-            $xpath = new \DOMXPath($doc);
-            $root  = $doc->getElementById('__nowroot');
-
+        return self::safeDom($html, function(\DOMDocument $doc, \DOMXPath $xpath, \DOMElement $root) use ($color) {
             $nodes = $xpath->query('//*[@data-nowonline-bg or contains(concat(" ", normalize-space(@class), " "), " nowonline-bg ")]');
             foreach ($nodes as $el) {
                 /** @var \DOMElement $el */
                 $style = (string)$el->getAttribute('style');
-                // ryd eksisterende background-properties
                 $style = preg_replace('/(?:^|;)\s*background(?:-color)?\s*:\s*[^;]*;?/i', ';', $style);
                 $style = trim(preg_replace('/;+/', ';', $style), '; ');
                 if ($style !== '') $style .= '; ';
-                $style .= 'background:' . $color . ';background-color:' . $color;
+                $style .= 'background-color:' . $color;
                 $el->setAttribute('style', $style);
 
-                // farv overlay-div hvis den findes
                 foreach ($el->getElementsByTagName('div') as $child) {
                     if (strpos(' '.$child->getAttribute('class').' ', ' elementor-background-overlay ') !== false) {
                         $ov = (string)$child->getAttribute('style');
                         $ov = preg_replace('/(?:^|;)\s*background(?:-color)?\s*:\s*[^;]*;?/i', ';', $ov);
                         $ov = trim(preg_replace('/;+/', ';', $ov), '; ');
                         if ($ov !== '') $ov .= '; ';
-                        $ov .= 'background:' . $color . ';background-color:' . $color . ';opacity:1';
+                        $ov .= 'background-color:' . $color . ';';
                         $child->setAttribute('style', $ov);
                     }
                 }
             }
+        });
+    }
 
-            $out = '';
-            foreach ($root->childNodes as $child) { $out .= $doc->saveHTML($child); }
-            return $out;
+    /** Find container til baggrundsmedie */
+    private static function discover_bg_target_node(\DOMXPath $xpath): ?\DOMElement
+    {
+        $q = [
+            '//*[@data-nowonline-bg]',
+            '//*[contains(concat(" ", normalize-space(@class), " "), " nowonline-bg ")]',
+            '//*[@data-now-bg]',
+            '//*[contains(concat(" ", normalize-space(@class), " "), " now-bg ")]',
+            '//*[@data-now-video]',
+            '//*[contains(concat(" ", normalize-space(@class), " "), " now-video- ")]',
+            '//*[@data-element_type="container" and (contains(@data-settings, "\"background_background\":\"video\"") or @bgvideo)]',
+        ];
+        foreach ($q as $expr) {
+            $n = $xpath->query($expr)->item(0);
+            if ($n instanceof \DOMElement) return $n;
         }
+        return null;
+    }
 
-        // Fallback uden DOM
-        $c = esc_attr($color);
-        $html = preg_replace(
-            '~(<[a-z0-9:_-]+\b(?=[^>]*\bclass=(["\'])[^\2>]*\bnowonline-bg\b[^\2>]*\2)[^>]*)(>)~i',
-            '$1 style="background:'.$c.';background-color:'.$c.'"$3',
-            $html
-        );
-        $html = preg_replace(
-            '~(<[a-z0-9:_-]+\b(?=[^>]*\bdata-nowonline-bg\b)[^>]*)(>)~i',
-            '$1 style="background:'.$c.';background-color:'.$c.'"$2',
-            $html
-        );
-        return $html;
+    private static function is_video_file(string $u): bool
+    {
+        return (bool)preg_match('~\.(mp4|m4v|webm|ogv|ogg)(\?.*)?$~i', $u);
+    }
+
+    /** Billede/Video baggrund – robust og failsafe */
+    private static function apply_bg_media_inline(string $html, array $opts, array $videoMap = []): string
+    {
+        $img        = isset($opts['img']) ? (string)$opts['img'] : '';
+        $imgTablet  = isset($opts['imgTablet']) ? (string)$opts['imgTablet'] : '';
+        $imgMobile  = isset($opts['imgMobile']) ? (string)$opts['imgMobile'] : '';
+        $pos        = isset($opts['pos']) ? (string)$opts['pos'] : '';
+        $size       = isset($opts['size']) ? (string)$opts['size'] : '';
+        $fixed      = !empty($opts['fixed']);
+        $video      = isset($opts['video']) ? (string)$opts['video'] : '';
+
+        if ($img === '' && $imgTablet === '' && $imgMobile === '' && $video === '') return $html;
+
+        return self::safeDom($html, function(\DOMDocument $doc, \DOMXPath $xpath, \DOMElement $root) use ($img,$imgTablet,$imgMobile,$pos,$size,$fixed,$video,$videoMap) {
+            $node = self::discover_bg_target_node($xpath);
+            if (!($node instanceof \DOMElement)) return;
+
+            // Video via attrs eller data-now-video
+            $vidUrl = $video;
+            if ($vidUrl === '') {
+                $key = '';
+                if ($node->hasAttribute('data-now-video')) {
+                    $key = strtolower($node->getAttribute('data-now-video'));
+                } else {
+                    $cls = ' ' . $node->getAttribute('class') . ' ';
+                    if (preg_match('/\bnow-video-([a-z0-9_-]+)\b/i', $cls, $m)) $key = strtolower($m[1]);
+                }
+                if ($key !== '' && !empty($videoMap[$key]) && self::is_video_file($videoMap[$key])) {
+                    $vidUrl = (string)$videoMap[$key];
+                }
+            }
+
+            if ($vidUrl !== '' && self::is_video_file($vidUrl)) {
+                $cls = ' ' . $node->getAttribute('class') . ' ';
+                if (strpos($cls, ' nowelt-has-bgvid ') === false) {
+                    $node->setAttribute('class', trim($node->getAttribute('class') . ' nowelt-has-bgvid'));
+                }
+                foreach (iterator_to_array($node->getElementsByTagName('video')) as $v) {
+                    if (strpos(' ' . $v->getAttribute('class') . ' ', ' nowelt-bg-video ') !== false) {
+                        $node->removeChild($v);
+                    }
+                }
+                $vid = $doc->createElement('video');
+                $vid->setAttribute('class', 'nowelt-bg-video');
+                $vid->setAttribute('autoplay', 'autoplay');
+                $vid->setAttribute('muted', 'muted');
+                $vid->setAttribute('loop', 'loop');
+                $vid->setAttribute('playsinline', 'playsinline');
+                $vid->setAttribute('preload', 'auto');
+                $vid->setAttribute('data-no-lazy', '1');
+                $vid->setAttribute('data-skip-lazy', '1');
+                $vid->setAttribute('data-rocket-lazyload', 'ignore');
+
+                $source = $doc->createElement('source');
+                $source->setAttribute('src', esc_url($vidUrl));
+                $vid->appendChild($source);
+
+                if ($node->firstChild) $node->insertBefore($vid, $node->firstChild);
+                else $node->appendChild($vid);
+
+                $style = (string)$node->getAttribute('style');
+                $style = preg_replace('/(?:^|;)\s*background-(position|size|attachment)\s*:\s*[^;]*;?/i', ';', $style);
+                $style = trim(preg_replace('/;+/', ';', $style), '; ');
+                if ($style !== '') $style .= '; ';
+                if ($pos  !== '') $style .= 'background-position:' . $pos . ';';
+                if ($size !== '') $style .= 'background-size:' . $size . ';';
+                $style .= 'background-attachment:' . ($fixed ? 'fixed' : 'scroll') . ';';
+                $node->setAttribute('style', $style);
+                return;
+            }
+
+            // fallback: billede
+            $style = (string)$node->getAttribute('style');
+            $style = preg_replace('/(?:^|;)\s*background-(image|position|size|attachment)\s*:\s*[^;]*;?/i', ';', $style);
+            $style = trim(preg_replace('/;+/', ';', $style), '; ');
+            if ($style !== '') $style .= '; ';
+            if ($img  !== '') $style .= 'background-image:url(' . esc_url($img) . ');';
+            if ($pos  !== '') $style .= 'background-position:' . $pos . ';';
+            if ($size !== '') $style .= 'background-size:' . $size . ';';
+            if ($fixed)       $style .= 'background-attachment:fixed;';
+            $node->setAttribute('style', $style);
+
+            $uid = 'nowbg-' . uniqid();
+            $node->setAttribute('data-nowbg-id', $uid);
+
+            $css = '';
+            if ($imgTablet !== '') $css .= '@media (max-width:1024px){[data-nowbg-id="'.$uid.'"]{background-image:url(' . esc_url($imgTablet) . ')}}';
+            if ($imgMobile !== '') $css .= '@media (max-width:767px){[data-nowbg-id="'.$uid.'"]{background-image:url(' . esc_url($imgMobile) . ')}}';
+            if ($css !== '') {
+                $styleTag = $doc->createElement('style');
+                $styleTag->appendChild($doc->createTextNode($css));
+                $root->appendChild($styleTag);
+            }
+        });
     }
 
     private static function build_video_maps(array $defs, array $fields): array
@@ -523,11 +632,6 @@ final class Renderer
         return [$video, $poster];
     }
 
-    private static function is_video_file(string $u): bool
-    {
-        return (bool)preg_match('~\.(mp4|m4v|webm|ogv|ogg)(\?.*)?$~i', $u);
-    }
-
     private static function to_embed_url(string $u): array
     {
         $url = trim($u);
@@ -535,27 +639,15 @@ final class Renderer
         $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
 
         if (strpos($host,'youtube.com') !== false || strpos($host,'youtu.be') !== false) {
-            if (preg_match('~youtu\.be/([^?&/]+)~i', $url, $m)) {
-                return ['kind'=>'youtube', 'url'=>'https://www.youtube.com/embed/'.$m[1]];
-            }
-            if (preg_match('~youtube\.com/shorts/([^?&/]+)~i', $url, $m)) {
-                return ['kind'=>'youtube', 'url'=>'https://www.youtube.com/embed/'.$m[1]];
-            }
-            if (preg_match('~[?&]v=([^?&/]+)~i', $url, $m)) {
-                return ['kind'=>'youtube', 'url'=>'https://www.youtube.com/embed/'.$m[1]];
-            }
-            if (strpos($url,'/embed/') !== false) {
-                return ['kind'=>'youtube', 'url'=>$url];
-            }
+            if (preg_match('~youtu\.be/([^?&/]+)~i', $url, $m)) return ['kind'=>'youtube', 'url'=>'https://www.youtube.com/embed/'.$m[1]];
+            if (preg_match('~youtube\.com/shorts/([^?&/]+)~i', $url, $m)) return ['kind'=>'youtube', 'url'=>'https://www.youtube.com/embed/'.$m[1]];
+            if (preg_match('~[?&]v=([^?&/]+)~i', $url, $m)) return ['kind'=>'youtube', 'url'=>'https://www.youtube.com/embed/'.$m[1]];
+            if (strpos($url,'/embed/') !== false) return ['kind'=>'youtube', 'url'=>$url];
         }
 
         if (strpos($host,'vimeo.com') !== false) {
-            if (preg_match('~vimeo\.com/(?:video/)?([0-9]+)~i', $url, $m)) {
-                return ['kind'=>'vimeo', 'url'=>'https://player.vimeo.com/video/'.$m[1]];
-            }
-            if (preg_match('~player\.vimeo\.com/video/([0-9]+)~i', $url, $m)) {
-                return ['kind'=>'vimeo', 'url'=>$url];
-            }
+            if (preg_match('~vimeo\.com/(?:video/)?([0-9]+)~i', $url, $m)) return ['kind'=>'vimeo', 'url'=>'https://player.vimeo.com/video/'.$m[1]];
+            if (preg_match('~player\.vimeo\.com/video/([0-9]+)~i', $url, $m)) return ['kind'=>'vimeo', 'url'=>$url];
         }
 
         return ['kind'=> self::is_video_file($url) ? 'file' : 'file', 'url'=>$url];
@@ -564,77 +656,65 @@ final class Renderer
     private static function rewrite_videos_dom(string $html, array $videoMap, array $posterMap): string
     {
         if (empty($videoMap)) return $html;
-        if (!class_exists('\DOMDocument')) return $html;
-
-        $doc = new \DOMDocument();
-        \libxml_use_internal_errors(true);
-        $doc->loadHTML('<?xml encoding="utf-8"?><div id="__nowroot">'.$html.'</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-        \libxml_clear_errors();
-
-        $xpath = new \DOMXPath($doc);
-        $root  = $doc->getElementById('__nowroot');
-
-        $nodes = $xpath->query('//*[@data-now-video or contains(@class,"now-video-")]');
-        foreach ($nodes as $el) {
-            /** @var \DOMElement $el */
-            $key = strtolower($el->getAttribute('data-now-video'));
-            if ($key === '') {
-                $cls = ' ' . $el->getAttribute('class') . ' ';
-                if (preg_match('/\bnow-video-([a-z0-9_-]+)\b/i', $cls, $m)) $key = strtolower($m[1]);
-            }
-            if ($key === '' || empty($videoMap[$key])) continue;
-
-            $vid = self::to_embed_url($videoMap[$key]);
-            $poster = '';
-
-            if ($el->hasAttribute('data-now-poster')) {
-                $pKey = strtolower($el->getAttribute('data-now-poster'));
-                $poster = $posterMap[$pKey] ?? '';
-            } elseif (!empty($posterMap[$key])) {
-                $poster = $posterMap[$key];
-            }
-
-            $iframe = $xpath->query('.//iframe', $el)->item(0);
-            if ($iframe instanceof \DOMElement && ($vid['kind'] === 'youtube' || $vid['kind'] === 'vimeo')) {
-                if ($iframe->hasAttribute('srcdoc')) $iframe->removeAttribute('srcdoc');
-                $iframe->setAttribute('src', esc_url($vid['url']));
-                continue;
-            }
-
-            $video = $xpath->query('.//video', $el)->item(0);
-            if ($video instanceof \DOMElement) {
-                if ($poster !== '') $video->setAttribute('poster', esc_url($poster));
-                if ($video->hasAttribute('src')) $video->removeAttribute('src');
-                foreach (iterator_to_array($video->getElementsByTagName('source')) as $src) {
-                    $video->removeChild($src);
+        return self::safeDom($html, function(\DOMDocument $doc, \DOMXPath $xpath, \DOMElement $root) use ($videoMap, $posterMap) {
+            $nodes = $xpath->query('//*[@data-now-video or contains(@class,"now-video-")]');
+            foreach ($nodes as $el) {
+                /** @var \DOMElement $el */
+                $key = strtolower($el->getAttribute('data-now-video'));
+                if ($key === '') {
+                    $cls = ' ' . $el->getAttribute('class') . ' ';
+                    if (preg_match('/\bnow-video-([a-z0-9_-]+)\b/i', $cls, $m)) $key = strtolower($m[1]);
                 }
-                $source = $doc->createElement('source');
-                $source->setAttribute('src', esc_url($vid['url']));
-                $video->appendChild($source);
-                continue;
-            }
+                if ($key === '' || empty($videoMap[$key])) continue;
 
-            if ($vid['kind'] === 'youtube' || $vid['kind'] === 'vimeo') {
-                $new = $doc->createElement('iframe');
-                $new->setAttribute('src', esc_url($vid['url']));
-                $new->setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
-                $new->setAttribute('allowfullscreen', 'allowfullscreen');
-                $el->appendChild($new);
-            } else {
-                $new = $doc->createElement('video');
-                $new->setAttribute('class', 'elementor-video');
-                $new->setAttribute('controls', 'controls');
-                if ($poster !== '') $new->setAttribute('poster', esc_url($poster));
-                $src = $doc->createElement('source');
-                $src->setAttribute('src', esc_url($vid['url']));
-                $new->appendChild($src);
-                $el->appendChild($new);
-            }
-        }
+                $vid = self::to_embed_url($videoMap[$key]);
+                $poster = '';
 
-        $out = '';
-        foreach ($root->childNodes as $child) $out .= $doc->saveHTML($child);
-        return $out;
+                if ($el->hasAttribute('data-now-poster')) {
+                    $pKey = strtolower($el->getAttribute('data-now-poster'));
+                    $poster = $posterMap[$pKey] ?? '';
+                } elseif (!empty($posterMap[$key])) {
+                    $poster = $posterMap[$key];
+                }
+
+                $iframe = $xpath->query('.//iframe', $el)->item(0);
+                if ($iframe instanceof \DOMElement && ($vid['kind'] === 'youtube' || $vid['kind'] === 'vimeo')) {
+                    if ($iframe->hasAttribute('srcdoc')) $iframe->removeAttribute('srcdoc');
+                    $iframe->setAttribute('src', esc_url($vid['url']));
+                    continue;
+                }
+
+                $video = $xpath->query('.//video', $el)->item(0);
+                if ($video instanceof \DOMElement) {
+                    if ($poster !== '') $video->setAttribute('poster', esc_url($poster));
+                    if ($video->hasAttribute('src')) $video->removeAttribute('src');
+                    foreach (iterator_to_array($video->getElementsByTagName('source')) as $src) {
+                        $video->removeChild($src);
+                    }
+                    $source = $doc->createElement('source');
+                    $source->setAttribute('src', esc_url($vid['url']));
+                    $video->appendChild($source);
+                    continue;
+                }
+
+                if ($vid['kind'] === 'youtube' || $vid['kind'] === 'vimeo') {
+                    $new = $doc->createElement('iframe');
+                    $new->setAttribute('src', esc_url($vid['url']));
+                    $new->setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+                    $new->setAttribute('allowfullscreen', 'allowfullscreen');
+                    $el->appendChild($new);
+                } else {
+                    $new = $doc->createElement('video');
+                    $new->setAttribute('class', 'elementor-video');
+                    $new->setAttribute('controls', 'controls');
+                    if ($poster !== '') $new->setAttribute('poster', esc_url($poster));
+                    $src = $doc->createElement('source');
+                    $src->setAttribute('src', esc_url($vid['url']));
+                    $new->appendChild($src);
+                    $el->appendChild($new);
+                }
+            }
+        });
     }
 
     private static function build_simple_gallery(array $urls): string
@@ -674,14 +754,20 @@ final class Renderer
         $gap    = isset($attrs['gap']) ? (int)$attrs['gap'] : 24;
         $fields = (isset($attrs['fields']) && is_array($attrs['fields'])) ? $attrs['fields'] : [];
 
-        // === Design-attributter ===
         $bgColor        = isset($attrs['containerBg'])   ? self::sanitize_color((string)$attrs['containerBg'])          : '';
         $btnTextColor   = isset($attrs['btnTextColor'])  ? self::sanitize_color((string)$attrs['btnTextColor'])         : '';
         $btnBorderColor = isset($attrs['btnBorderColor'])? self::sanitize_color((string)$attrs['btnBorderColor'])       : '';
         $btnBorderWidth = isset($attrs['btnBorderWidth'])? self::sanitize_length((string)$attrs['btnBorderWidth'])      : '';
         $btnBorderRad   = isset($attrs['btnBorderRadius'])? self::sanitize_length((string)$attrs['btnBorderRadius'])    : '';
 
-        // Saml CSS-variabler på wrapperen
+        $bgVideo   = isset($attrs['bgVideo'])     ? esc_url(self::fix_url((string)$attrs['bgVideo']))           : '';
+        $bgImg     = isset($attrs['bgImg'])       ? esc_url(self::fix_url((string)$attrs['bgImg']))             : '';
+        $bgImgTab  = isset($attrs['bgImgTablet']) ? esc_url(self::fix_url((string)$attrs['bgImgTablet']))       : '';
+        $bgImgMob  = isset($attrs['bgImgMobile']) ? esc_url(self::fix_url((string)$attrs['bgImgMobile']))       : '';
+        $bgPos     = isset($attrs['bgPos'])       ? self::sanitize_bg_pos((string)$attrs['bgPos'])              : '';
+        $bgSize    = isset($attrs['bgSize'])      ? self::sanitize_bg_size((string)$attrs['bgSize'])            : '';
+        $bgFixed   = !empty($attrs['bgFixed']);
+
         $vars = [];
         if ($bgColor        !== '') $vars['--now-bg-color']  = $bgColor;
         if ($btnTextColor   !== '') $vars['--now-btn-color'] = $btnTextColor;
@@ -718,6 +804,9 @@ final class Renderer
         $html = self::normalize_elementor_attributes($html);
         $defs = $this->scanner->scan($tid);
 
+        // Video/poster maps før BG
+        [$videoMap, $posterMap] = self::build_video_maps($defs, $fields);
+
         if (!empty($fields)) {
             $search  = [];
             $replace = [];
@@ -742,12 +831,12 @@ final class Renderer
                         foreach ($parts as $u) if ($u !== '') $urls[] = esc_url(self::fix_url($u));
                     }
                     $gallery_html = self::build_simple_gallery($urls);
-                    foreach (['[[gallery:' . $key . ']]', '[[galleri:' . $key . ']]', '[[' . $key . ']]'] as $tok) { $search[] = $tok; $replace[] = $gallery_html; }
+                    foreach (['[[gallery:' . $key . ']]','[[galleri:' . $key . ']]','[[' . $key . ']]'] as $tok) { $search[] = $tok; $replace[] = $gallery_html; }
                 } elseif ($type === 'video') {
                     $val = is_array($v) ? (string)($v['url'] ?? '') : (string)$v;
                     $url = esc_url(self::fix_url($val));
                     $vid_html = self::build_simple_video($url);
-                    foreach (['[[video:' . $key . ']]', '[[' . $key . ']]'] as $tok) { $search[] = $tok; $replace[] = $vid_html; }
+                    foreach (['[[video:' . $key . ']]','[[' . $key . ']]'] as $tok) { $search[] = $tok; $replace[] = $vid_html; }
                 } elseif ($type === 'url') {
                     $url   = '';
                     $blank = false;
@@ -844,28 +933,34 @@ final class Renderer
             );
         }
 
-        [$imgMap, $bgMap] = self::build_media_maps($defs, $fields);
+        // NY: brug HTML til at afgøre bg-keys
+        [$imgMap, $bgMap] = self::build_media_maps($defs, $fields, $html);
         if (!empty($imgMap) || !empty($bgMap)) {
-            if (class_exists('\DOMDocument')) {
-                $html = self::rewrite_media_dom($html, $imgMap, $bgMap);
-            } else {
-                // regex fallback udeladt
-            }
+            $html = self::rewrite_media_dom($html, $imgMap, $bgMap);
         }
 
         $galMap = self::build_gallery_map($defs, $fields, $html);
         if (!empty($galMap)) { $html = self::rewrite_galleries_dom($html, $galMap); }
 
-        [$videoMap, $posterMap] = self::build_video_maps($defs, $fields);
-        if (!empty($videoMap)) { $html = self::rewrite_videos_dom($html, $posterMap); }
+        if (!empty($videoMap)) { $html = self::rewrite_videos_dom($html, $videoMap, $posterMap); }
 
         $isHeader = self::is_elementor_header_template($tid);
         if ($isHeader) self::$hasHeaderBlock = true;
 
-        // Injektion af valgt baggrundsfarve
         if ($bgColor !== '') {
             $html = self::apply_bg_color_inline($html, $bgColor);
         }
+
+        // Baggrund: billede/video (failsafe)
+        $html = self::apply_bg_media_inline($html, [
+            'img'       => $bgImg,
+            'imgTablet' => $bgImgTab,
+            'imgMobile' => $bgImgMob,
+            'pos'       => $bgPos,
+            'size'      => $bgSize,
+            'fixed'     => $bgFixed,
+            'video'     => $bgVideo,
+        ], $videoMap);
 
         $data_attr = !empty($linkMap) ? ' data-nowlinks=\'' . esc_attr( wp_json_encode($linkMap) ) . '\'' : '';
         if ($isHeader) $data_attr .= ' data-nowelt-is-header="1"';

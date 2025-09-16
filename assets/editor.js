@@ -169,7 +169,7 @@
       if (!node || node.nodeType !== 1) return;
       var tag = node.tagName.toLowerCase();
       var cls = node.getAttribute("class") || "";
-      if (/elementor-/.test(cls)) node.removeAttribute("class"); // why: undgå Elementor klasser i content
+      if (/elementor-/.test(cls)) node.removeAttribute("class"); // undgå Elementor-klasser i content
 
       if (/^h[1-6]$/.test(tag)) {
         var p = document.createElement("p");
@@ -697,14 +697,24 @@
             background: { type: "object", default: {} },
             responsive: { type: "object", default: {} },
             spacing: { type: "object", default: {} },
+
             // Design
             containerBg: { type: "string", default: "" },
 
-            // Knap-design (NYT)
+            // Knap-design
             btnTextColor: { type: "string", default: "" },
             btnBorderColor: { type: "string", default: "" },
             btnBorderWidth: { type: "string", default: "" },
             btnBorderRadius: { type: "string", default: "" },
+
+            // --- NYT: Background media / options ---
+            bgVideo: { type: "string", default: "" },
+            bgImg: { type: "string", default: "" },
+            bgImgTablet: { type: "string", default: "" },
+            bgImgMobile: { type: "string", default: "" },
+            bgPos: { type: "string", default: "center center" },
+            bgSize: { type: "string", default: "cover" },
+            bgFixed: { type: "boolean", default: false },
 
             // legacy (ikke brugt i UI)
             containerTargetMode: { type: "string", default: "auto" },
@@ -717,11 +727,20 @@
             var fields = attrs.fields || {};
             var containerBg = attrs.containerBg || "";
 
-            // NYT: knap-attributter
+            // knap-attributter
             var btnTextColor = attrs.btnTextColor || "";
             var btnBorderColor = attrs.btnBorderColor || "";
             var btnBorderWidth = attrs.btnBorderWidth || "";
             var btnBorderRadius = attrs.btnBorderRadius || "";
+
+            // baggrunds-attributter (NYT)
+            var bgVideo = attrs.bgVideo || "";
+            var bgImg = attrs.bgImg || "";
+            var bgImgTablet = attrs.bgImgTablet || "";
+            var bgImgMobile = attrs.bgImgMobile || "";
+            var bgPos = attrs.bgPos || "center center";
+            var bgSize = attrs.bgSize || "cover";
+            var bgFixed = !!attrs.bgFixed;
 
             // Persistente faner
             var _tab = useState("content"),
@@ -1085,7 +1104,7 @@
                 "div",
                 {},
 
-                // ====== Background ======
+                // ====== Background (farve) ======
                 el(
                   PanelBody,
                   { title: __("Background", "nowonline"), initialOpen: true },
@@ -1281,17 +1300,286 @@
               );
             }
 
+            // ====== NY: Baggrunds-fanen (video/billede/pos/size/fixed + tablet/mobil) ======
             function BackgroundTab() {
+              var posOpts = [
+                "center center",
+                "top center",
+                "bottom center",
+                "center left",
+                "center right",
+                "top left",
+                "top right",
+                "bottom left",
+                "bottom right",
+              ];
+              var sizeOpts = ["cover", "contain", "auto"];
+
+              function ImgPicker(label, key) {
+                var url = props.attributes[key] || "";
+                function onSelect(media) {
+                  setAttr({ [key]: (media && media.url) || "" });
+                }
+                function clear() {
+                  setAttr({ [key]: "" });
+                }
+                return el(
+                  "div",
+                  { className: "now-elt-sec-item" },
+                  el("div", { className: "now-elt-label" }, label),
+                  url
+                    ? el("img", {
+                        src: url,
+                        alt: "",
+                        className: "now-elt-imgprev",
+                        style: {
+                          maxWidth: 260,
+                          display: "block",
+                          marginBottom: 6,
+                        },
+                      })
+                    : el(
+                        "div",
+                        { className: "now-elt-imgprev now-elt-noimg" },
+                        __("No image selected", "nowonline")
+                      ),
+                  MediaUpload
+                    ? el(MediaUpload, {
+                        onSelect: onSelect,
+                        value: 0,
+                        allowedTypes: ["image"],
+                        render: function (o) {
+                          return el(
+                            "div",
+                            {},
+                            el(
+                              "button",
+                              { className: "button", onClick: o.open },
+                              __("Add Image", "nowonline")
+                            ),
+                            el(
+                              "button",
+                              {
+                                className: "button is-secondary",
+                                onClick: clear,
+                                style: { marginLeft: 6 },
+                              },
+                              __("Clear", "nowonline")
+                            )
+                          );
+                        },
+                      })
+                    : null
+                );
+              }
+
+              function VideoPicker() {
+                var url = props.attributes.bgVideo || "";
+                function onSelect(media) {
+                  setAttr({ bgVideo: (media && media.url) || "" });
+                }
+                return el(
+                  "div",
+                  { className: "now-elt-sec-item" },
+                  el(
+                    "div",
+                    { className: "now-elt-label" },
+                    __("Background video", "nowonline")
+                  ),
+                  url
+                    ? el("video", {
+                        src: url,
+                        controls: true,
+                        style: {
+                          width: "100%",
+                          maxWidth: 520,
+                          display: "block",
+                          marginBottom: 6,
+                        },
+                      })
+                    : el(
+                        "div",
+                        { className: "now-elt-imgprev now-elt-noimg" },
+                        __("No video selected", "nowonline")
+                      ),
+                  MediaUpload
+                    ? el(MediaUpload, {
+                        onSelect: onSelect,
+                        value: 0,
+                        allowedTypes: ["video"],
+                        render: function (o) {
+                          return el(
+                            "div",
+                            {},
+                            el(
+                              "button",
+                              { className: "button", onClick: o.open },
+                              __("Choose video", "nowonline")
+                            ),
+                            el(
+                              "button",
+                              {
+                                className: "button is-secondary",
+                                onClick: function () {
+                                  setAttr({ bgVideo: "" });
+                                },
+                                style: { marginLeft: 6 },
+                              },
+                              __("Remove", "nowonline")
+                            ),
+                            el(TextControl, {
+                              value: url || "",
+                              onChange: function (v) {
+                                setAttr({ bgVideo: (v || "").trim() });
+                              },
+                              placeholder: __(
+                                "or paste video URL…",
+                                "nowonline"
+                              ),
+                              style: { marginTop: 8, minWidth: 280 },
+                            })
+                          );
+                        },
+                      })
+                    : null
+                );
+              }
+
               return el(
                 "div",
                 {},
+                // Video
+                el(
+                  PanelBody,
+                  {
+                    title: __("Background video", "nowonline"),
+                    initialOpen: true,
+                  },
+                  VideoPicker()
+                ),
+
+                // Desktop image + options
+                el(
+                  PanelBody,
+                  {
+                    title: __("Background image", "nowonline"),
+                    initialOpen: true,
+                  },
+                  ImgPicker(__("Background image", "nowonline"), "bgImg"),
+                  el(
+                    "div",
+                    {
+                      style: {
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr 1fr",
+                        gap: 8,
+                        alignItems: "center",
+                        marginTop: 8,
+                      },
+                    },
+                    // Position
+                    el(
+                      "div",
+                      {},
+                      el(
+                        "div",
+                        { className: "now-elt-label" },
+                        __("Background position", "nowonline")
+                      ),
+                      el(
+                        "select",
+                        {
+                          value: bgPos,
+                          onChange: function (e) {
+                            setAttr({ bgPos: e.target.value });
+                          },
+                        },
+                        posOpts.map(function (p) {
+                          return el("option", { key: p, value: p }, p);
+                        })
+                      )
+                    ),
+                    // Size
+                    el(
+                      "div",
+                      {},
+                      el(
+                        "div",
+                        { className: "now-elt-label" },
+                        __("Background size", "nowonline")
+                      ),
+                      el(
+                        "select",
+                        {
+                          value: bgSize,
+                          onChange: function (e) {
+                            setAttr({ bgSize: e.target.value });
+                          },
+                        },
+                        sizeOpts.map(function (s) {
+                          return el("option", { key: s, value: s }, s);
+                        })
+                      )
+                    ),
+                    // Fixed
+                    el(
+                      "div",
+                      {},
+                      el(
+                        "div",
+                        { className: "now-elt-label" },
+                        __("Background Fixed", "nowonline")
+                      ),
+                      el(CheckboxControl, {
+                        checked: !!bgFixed,
+                        onChange: function (v) {
+                          setAttr({ bgFixed: !!v });
+                        },
+                        label: bgFixed
+                          ? __("Yes", "nowonline")
+                          : __("No", "nowonline"),
+                      })
+                    )
+                  )
+                ),
+
+                // Tablet
+                el(
+                  PanelBody,
+                  {
+                    title: __("Background image tablet", "nowonline"),
+                    initialOpen: false,
+                  },
+                  ImgPicker(__("Tablet background", "nowonline"), "bgImgTablet")
+                ),
+
+                // Mobile
+                el(
+                  PanelBody,
+                  {
+                    title: __("Background image mobile", "nowonline"),
+                    initialOpen: false,
+                  },
+                  ImgPicker(__("Mobile background", "nowonline"), "bgImgMobile")
+                ),
+
                 el(
                   "div",
-                  { className: "now-elt-muted" },
-                  __("(Reserved)", "nowonline")
+                  { className: "now-elt-muted", style: { marginTop: 8 } },
+                  __(
+                    "Anvendes på container markeret i Elementor som ",
+                    "nowonline"
+                  ),
+                  el(
+                    "code",
+                    {},
+                    "[data-nowonline-bg], .nowonline-bg, [data-now-bg], .now-bg"
+                  ),
+                  "."
                 )
               );
             }
+
             function AdvancedTab() {
               return el(
                 "div",
