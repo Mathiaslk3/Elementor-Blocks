@@ -26,57 +26,89 @@ final class Renderer
         add_action('wp_footer', [$this, 'inject_header_body_class']);
     }
 
-public function frontend_css(): void
-{
-    $sel = apply_filters('nowonline_elt_header_hide_selectors', [
-        'header[role="banner"]','.elementor-location-header','#masthead','.site-header',
-        'header.site-header','header.header','.ast-desktop-header','.ast-mobile-header-wrap',
-        '.oceanwp-header','.main-header','.header-main','.gen-header','#header'
-    ]);
-    $prefA = array_map(static fn($s) => 'body.nowelt-replace-header ' . $s, $sel);
-    $prefB = array_map(static fn($s) => 'html.nowelt-replace-header ' . $s, $sel);
-    $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
+    public function frontend_css(): void
+    {
+        $sel = apply_filters('nowonline_elt_header_hide_selectors', [
+            'header[role="banner"]','.elementor-location-header','#masthead','.site-header',
+            'header.site-header','header.header','.ast-desktop-header','.ast-mobile-header-wrap',
+            '.oceanwp-header','.main-header','.header-main','.gen-header','#header'
+        ]);
+        $prefA = array_map(static fn($s) => 'body.nowelt-replace-header ' . $s, $sel);
+        $prefB = array_map(static fn($s) => 'html.nowelt-replace-header ' . $s, $sel);
+        $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
 
-    $targets = '.nowonline-elt-wrapper [data-now-bg],.nowonline-elt-wrapper .now-bg,'
-             . '.nowonline-elt-wrapper [data-nowonline-bg],.nowonline-elt-wrapper .nowonline-bg';
-    $overlayTargets = $targets . '>.elementor-background-overlay,' . $targets . ' .elementor-background-overlay';
+        $targets = '.nowonline-elt-wrapper [data-now-bg],.nowonline-elt-wrapper .now-bg,'
+                 . '.nowonline-elt-wrapper [data-nowonline-bg],.nowonline-elt-wrapper .nowonline-bg';
+        $overlayTargets = $targets . '>.elementor-background-overlay,' . $targets . ' .elementor-background-overlay';
 
-    // Kun hvis wrapperen faktisk har mindst én --now-btn-* variabel sat
-    $btnScope = '.nowonline-elt-wrapper[style*="--now-btn-"] .nowonline-elt-module';
+        // Kun hvis wrapperen faktisk har mindst én --now-btn-* variabel sat
+        $btnScope = '.nowonline-elt-wrapper[style*="--now-btn-"] .nowonline-elt-module';
 
-    // Begræns til <a> (Elementor-knapper er typisk <a>) + dine now-link-varianter
-    $btnSel = $btnScope . ' a[data-now-key],'
-            . $btnScope . ' a[class*="now-link-"],'
-            . $btnScope . ' a[id^="now-link-"],'
-            . $btnScope . ' a.elementor-button,'
-            . $btnScope . ' a.elementor-button-link';
+        // Begræns til <a> (Elementor-knapper er typisk <a>) + dine now-link-varianter
+        $btnSel = $btnScope . ' a[data-now-key],'
+                . $btnScope . ' a[class*="now-link-"],'
+                . $btnScope . ' a[id^="now-link-"],'
+                . $btnScope . ' a.elementor-button,'
+                . $btnScope . ' a.elementor-button-link';
 
-    echo '<style>'
-        . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
-        . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
-        // VIGTIGT: kun background-color (ellers nulstilles background-image)
-        . $targets . '{background-color:var(--now-bg-color)!important;}'
-        . $overlayTargets . '{background-color:var(--now-bg-color)!important;}'
+        // Font-size mapping via CSS-variabler (virker kun hvor variablen er sat – ellers fallback til template)
+        $fsBase = '.nowonline-elt-wrapper .nowonline-elt-module';
+        $fsCss  =
+            $fsBase . ' h1,' . $fsBase . ' .elementor-widget-heading h1.elementor-heading-title{font-size:var(--now-fs-h1)!important;}' .
+            $fsBase . ' h2,' . $fsBase . ' .elementor-widget-heading h2.elementor-heading-title{font-size:var(--now-fs-h2)!important;}' .
+            $fsBase . ' h3,' . $fsBase . ' .elementor-widget-heading h3.elementor-heading-title{font-size:var(--now-fs-h3)!important;}' .
+            $fsBase . ' h4,' . $fsBase . ' .elementor-widget-heading h4.elementor-heading-title{font-size:var(--now-fs-h4)!important;}' .
+            $fsBase . ' h5,' . $fsBase . ' .elementor-widget-heading h5.elementor-heading-title{font-size:var(--now-fs-h5)!important;}' .
+            $fsBase . ' h6,' . $fsBase . ' .elementor-widget-heading h6.elementor-heading-title{font-size:var(--now-fs-h6)!important;}' .
+            $fsBase . ' p,'  . $fsBase . ' .elementor-widget-text-editor,' . $fsBase . ' .elementor-widget-text-editor p{font-size:var(--now-fs-body)!important;}' .
+            $fsBase . ' a.elementor-button,' . $fsBase . ' .elementor-button{font-size:var(--now-fs-btn)!important;}';
 
-        // Knap-variabler – gælder kun når wrapper har --now-btn-* i style-attributten.
-        // Ingen tvungen border-style, så template-styling arves som default.
-        . $btnSel . '{'
-            . 'color:var(--now-btn-color)!important;'
-            . 'border-color:var(--now-btn-bdc)!important;'
-            . 'border-width:var(--now-btn-bdw)!important;'
-            . 'border-radius:var(--now-btn-rad)!important;'
-        . '}'
-        . $btnSel . ':hover,' . $btnSel . ':focus{'
-            . 'color:var(--now-btn-color)!important;'
-            . 'border-color:var(--now-btn-bdc)!important;'
-        . '}'
+        // NULSTIL inline font-size på descendants, så H/P bestemmer (template på mobil, vars på desktop)
+        $inlineTargets = implode(',', [
+            $fsBase . ' .elementor-heading-title [style*="font-size"]',
+            $fsBase . ' h1 [style*="font-size"]',
+            $fsBase . ' h2 [style*="font-size"]',
+            $fsBase . ' h3 [style*="font-size"]',
+            $fsBase . ' h4 [style*="font-size"]',
+            $fsBase . ' h5 [style*="font-size"]',
+            $fsBase . ' h6 [style*="font-size"]',
+            $fsBase . ' p [style*="font-size"]',
+            $fsBase . ' .elementor-widget-text-editor [style*="font-size"]'
+        ]);
+        $inlineResetCss =
+            '@media (max-width:1024px){' . $inlineTargets . '{font-size:inherit!important;}}' .
+            '@media (min-width:1025px){' . $inlineTargets . '{font-size:inherit!important;}}';
 
-        . '.nowonline-elt-wrapper .nowelt-has-bgvid{position:relative;overflow:hidden;}'
-        . '.nowonline-elt-wrapper .nowelt-bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;}'
-        . $hideCss
-        . '</style>';
-}
+        echo '<style>'
+            . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
+            . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
+            // VIGTIGT: kun background-color (ellers nulstilles background-image)
+            . $targets . '{background-color:var(--now-bg-color)!important;}'
+            . $overlayTargets . '{background-color:var(--now-bg-color)!important;}'
 
+            // Knap-variabler – ingen tvungen border-style (template arver som default)
+            . $btnSel . '{'
+                . 'color:var(--now-btn-color)!important;'
+                . 'border-color:var(--now-btn-bdc)!important;'
+                . 'border-width:var(--now-btn-bdw)!important;'
+                . 'border-radius:var(--now-btn-rad)!important;'
+            . '}'
+            . $btnSel . ':hover,' . $btnSel . ':focus{'
+                . 'color:var(--now-btn-color)!important;'
+                . 'border-color:var(--now-btn-bdc)!important;'
+            . '}'
+
+            // Font-size var mapping – KUN PÅ DESKTOP (≥1025px)
+            . '@media (min-width:1025px){' . $fsCss . '}'
+
+            // Nulstil inline font-size på både mobil og desktop
+            . $inlineResetCss
+
+            . '.nowonline-elt-wrapper .nowelt-has-bgvid{position:relative;overflow:hidden;}'
+            . '.nowonline-elt-wrapper .nowelt-bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;}'
+            . $hideCss
+            . '</style>';
+    }
 
     private static function fix_url(string $u): string
     {
@@ -926,6 +958,16 @@ public function frontend_css(): void
         $btnBorderWidth = isset($attrs['btnBorderWidth'])? self::sanitize_length((string)$attrs['btnBorderWidth'])      : '';
         $btnBorderRad   = isset($attrs['btnBorderRadius'])? self::sanitize_length((string)$attrs['btnBorderRadius'])    : '';
 
+        // NYT: Desktop-only font size attributes
+        $fsH1  = self::sanitize_length($attrs['fsH1']  ?? '');
+        $fsH2  = self::sanitize_length($attrs['fsH2']  ?? '');
+        $fsH3  = self::sanitize_length($attrs['fsH3']  ?? '');
+        $fsH4  = self::sanitize_length($attrs['fsH4']  ?? '');
+        $fsH5  = self::sanitize_length($attrs['fsH5']  ?? '');
+        $fsH6  = self::sanitize_length($attrs['fsH6']  ?? '');
+        $fsBody= self::sanitize_length($attrs['fsBody']?? '');
+        $fsBtn = self::sanitize_length($attrs['fsBtn'] ?? '');
+
         $bgVideo   = isset($attrs['bgVideo'])     ? esc_url(self::fix_url((string)$attrs['bgVideo']))           : '';
         $bgImg     = isset($attrs['bgImg'])       ? esc_url(self::fix_url((string)$attrs['bgImg']))             : '';
         $bgImgTab  = isset($attrs['bgImgTablet']) ? esc_url(self::fix_url((string)$attrs['bgImgTablet']))       : '';
@@ -1166,8 +1208,6 @@ public function frontend_css(): void
         $galMap = self::build_gallery_map($defs, $fields, $html);
         if (!empty($galMap)) { $html = self::rewrite_galleries_dom($html, $galMap); }
 
-        if (!empty($videoMap)) { $html = self::rewrite_videos_dom($html, $posterMap); } // NOTE: posterMap var 2nd param før – men funktionen kræver (html, videoMap, posterMap)
-        // Correct call:
         if (!empty($videoMap)) { $html = self::rewrite_videos_dom($html, $videoMap, $posterMap); }
 
         $isHeader = self::is_elementor_header_template($tid);
@@ -1188,7 +1228,7 @@ public function frontend_css(): void
             'video'     => $bgVideo,
         ], $videoMap);
 
-        // Responsive CSS: hide/padding pr. device
+        // Responsive CSS: hide/padding pr. device + DESKTOP-ONLY font-size vars
         $uid = 'nowblk-' . uniqid();
         $sel = '[data-nowblk-id="'.$uid.'"]';
         $respCss = '';
@@ -1218,9 +1258,25 @@ public function frontend_css(): void
                 . '}}';
         }
 
+        // Skjul pr. device
         if ($hideDesktop) $respCss .= '@media (min-width:1025px){'.$sel.'{display:none!important}}';
         if ($hideTablet)  $respCss .= '@media (min-width:768px) and (max-width:1024px){'.$sel.'{display:none!important}}';
         if ($hideMobile)  $respCss .= '@media (max-width:767px){'.$sel.'{display:none!important}}';
+
+        // NYT: Desktop-only font-size variabler indsat på netop denne blok
+        $desktopVars = '';
+        if ($fsH1  !== '') $desktopVars .= '--now-fs-h1:'.$fsH1.';';
+        if ($fsH2  !== '') $desktopVars .= '--now-fs-h2:'.$fsH2.';';
+        if ($fsH3  !== '') $desktopVars .= '--now-fs-h3:'.$fsH3.';';
+        if ($fsH4  !== '') $desktopVars .= '--now-fs-h4:'.$fsH4.';';
+        if ($fsH5  !== '') $desktopVars .= '--now-fs-h5:'.$fsH5.';';
+        if ($fsH6  !== '') $desktopVars .= '--now-fs-h6:'.$fsH6.';';
+        if ($fsBody!== '') $desktopVars .= '--now-fs-body:'.$fsBody.';';
+        if ($fsBtn !== '') $desktopVars .= '--now-fs-btn:'.$fsBtn.';';
+
+        if ($desktopVars !== '') {
+            $respCss .= '@media (min-width:1025px){'.$sel.'{'.$desktopVars.'}}';
+        }
 
         $styleResponsiveTag = $respCss ? '<style>'.$respCss.'</style>' : '';
 
