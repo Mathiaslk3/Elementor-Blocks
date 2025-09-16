@@ -57,28 +57,6 @@
         p.label || ""
       );
     };
-  var SelectControl =
-    C.SelectControl ||
-    function (p) {
-      return el(
-        "label",
-        {},
-        p.label || "",
-        el(
-          "select",
-          {
-            value: p.value,
-            onChange: function (e) {
-              p.onChange && p.onChange(e.target.value);
-            },
-            style: { display: "block", marginTop: 4 },
-          },
-          (p.options || []).map(function (o) {
-            return el("option", { value: o.value, key: o.value }, o.label);
-          })
-        )
-      );
-    };
   var ColorPalette =
     C.ColorPalette ||
     function (p) {
@@ -89,6 +67,15 @@
           p.onChange && p.onChange(e.target.value);
         },
       });
+    };
+  var Button =
+    C.Button ||
+    function (p) {
+      return el(
+        "button",
+        Object.assign({ type: "button", className: "button" }, p),
+        p.children
+      );
     };
 
   var InspectorControls = B.InspectorControls || "div";
@@ -165,8 +152,9 @@
       .replace(/^(https?:\/\/)(https?:\/\/)/i, "$1")
       .replace(/^(https?:\/\/)+/i, "$1");
     if (/^www\./i.test(u)) u = "https://" + u;
-    if (!/^[a-z][a-z0-9+.\-]*:\/\//i.test(u) && /^[^\/\s]+\.[^\s]+/.test(u))
+    if (!/^[a-z][a-z0-9+.\-]*:\/\//i.test(u) && /^[^\/\s]+\.[^\s]+/.test(u)) {
       u = "https://" + u;
+    }
     return u;
   }
 
@@ -181,7 +169,7 @@
       if (!node || node.nodeType !== 1) return;
       var tag = node.tagName.toLowerCase();
       var cls = node.getAttribute("class") || "";
-      if (/elementor-/.test(cls)) node.removeAttribute("class"); // why: undgå Elementor-runtime klasser
+      if (/elementor-/.test(cls)) node.removeAttribute("class"); // why: undgå Elementor klasser i content
 
       if (/^h[1-6]$/.test(tag)) {
         var p = document.createElement("p");
@@ -217,6 +205,7 @@
       toRemove.forEach(function (n) {
         node.removeAttribute(n);
       });
+
       Array.prototype.slice.call(node.children || []).forEach(walk);
     }
 
@@ -538,7 +527,7 @@
     );
   }
 
-  // --- PagePicker for URL fields --------------------------------------------
+  // --- PagePicker for URL fields (kun når hook findes) ----------------------
   function PagePicker(p) {
     var block = p.block,
       def = p.def,
@@ -708,7 +697,16 @@
             background: { type: "object", default: {} },
             responsive: { type: "object", default: {} },
             spacing: { type: "object", default: {} },
+            // Design
             containerBg: { type: "string", default: "" },
+
+            // Knap-design (NYT)
+            btnTextColor: { type: "string", default: "" },
+            btnBorderColor: { type: "string", default: "" },
+            btnBorderWidth: { type: "string", default: "" },
+            btnBorderRadius: { type: "string", default: "" },
+
+            // legacy (ikke brugt i UI)
             containerTargetMode: { type: "string", default: "auto" },
             containerTarget: { type: "string", default: "" },
           },
@@ -718,8 +716,12 @@
             var templateId = attrs.templateId || 0;
             var fields = attrs.fields || {};
             var containerBg = attrs.containerBg || "";
-            var containerTargetMode = attrs.containerTargetMode || "auto";
-            var containerTarget = attrs.containerTarget || "";
+
+            // NYT: knap-attributter
+            var btnTextColor = attrs.btnTextColor || "";
+            var btnBorderColor = attrs.btnBorderColor || "";
+            var btnBorderWidth = attrs.btnBorderWidth || "";
+            var btnBorderRadius = attrs.btnBorderRadius || "";
 
             // Persistente faner
             var _tab = useState("content"),
@@ -760,7 +762,7 @@
               )
             );
 
-            // Feltdefinitioner for valgt template
+            // Feltdefinitioner
             var defs = getFieldDefs(templateId) || [];
             var richDefs = defs.filter(isRich);
             var textDefs = defs.filter(function (d) {
@@ -782,7 +784,7 @@
               );
             }
 
-            // Tekst (korte/textarea)
+            // Tekster
             var textInputs = textDefs
               .map(function (def) {
                 var value = fields[def.key] || "";
@@ -881,7 +883,7 @@
               return GalleryField(props, def);
             });
 
-            // --- Rich (TinyMCE) ----------------------------------------------
+            // --- Rich (TinyMCE hvis muligt, ellers RichText) -----------------
             function TinyMCEField(def) {
               var fieldKey = def.key;
               var initial =
@@ -896,8 +898,7 @@
               var instId = safe(
                 props.clientId || Math.random().toString(36).slice(2, 8)
               );
-              var uniqueId = "nowelt-" + instId + "-" + safe(fieldKey);
-              var idRef = useRef(uniqueId);
+              var idRef = useRef("nowelt-" + instId + "-" + safe(fieldKey));
               var taRef = useRef(null);
 
               useEffect(
@@ -922,9 +923,8 @@
                         : taRef.current
                         ? taRef.current.value
                         : "";
-                    var val = sanitizeRichHtml(raw);
                     var next = Object.assign({}, props.attributes.fields || {});
-                    next[fieldKey] = val || "";
+                    next[fieldKey] = sanitizeRichHtml(raw) || "";
                     props.setAttributes({ fields: next });
                   }
                   function bindWhenReady() {
@@ -942,7 +942,7 @@
                     }, 50);
                   }
                   function initIfNeeded() {
-                    if (!contentVisible) return; // init kun når fanen er synlig
+                    if (!contentVisible) return;
                     if (hasEditor()) return;
                     try {
                       OldEditor.remove(idRef.current);
@@ -960,15 +960,11 @@
                     bindWhenReady();
                   }
 
-                  // første init hvis synlig
                   initIfNeeded();
-
-                  // vagt: hvis editor-instansen forsvinder mens fanen er synlig → re-init
                   guard = setInterval(function () {
                     if (!disposed && contentVisible && !hasEditor())
                       initIfNeeded();
                   }, 200);
-
                   if (taRef.current)
                     taRef.current.addEventListener("input", sync);
 
@@ -1017,12 +1013,11 @@
                         tagName: "div",
                         value: value,
                         onChange: function (v) {
-                          var cleaned = sanitizeRichHtml(v || "");
                           var next = Object.assign(
                             {},
                             props.attributes.fields || {}
                           );
-                          next[def.key] = cleaned;
+                          next[def.key] = sanitizeRichHtml(v || "");
                           props.setAttributes({ fields: next });
                         },
                         placeholder: __("Skriv formateret tekst…", "nowonline"),
@@ -1045,7 +1040,7 @@
                     ),
                   ];
 
-            // --- Tabs (persistent mount) -------------------------------------
+            // --- Tabs ---------------------------------------------------------
             function TabBtn(name, title) {
               var active = activeTab === name;
               return el(
@@ -1084,17 +1079,26 @@
                 )
               );
             }
+
             function DesignTab() {
               return el(
                 "div",
                 {},
+
+                // ====== Background ======
                 el(
                   PanelBody,
                   { title: __("Background", "nowonline"), initialOpen: true },
                   el(
                     "div",
                     {
-                      style: { display: "flex", alignItems: "center", gap: 8 },
+                      style: {
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        marginBottom: 8,
+                      },
                     },
                     el(
                       "div",
@@ -1110,71 +1114,173 @@
                     el(TextControl, {
                       value: containerBg || "",
                       onChange: function (v) {
-                        setAttr({ containerBg: v || "" });
+                        setAttr({ containerBg: (v || "").trim() });
                       },
                       placeholder: __(
-                        "fx #000, rgb(), var(--token)",
+                        "fx #cf4747, rgb(), rgba(), hsl(), var(--token), red",
                         "nowonline"
                       ),
-                      style: { maxWidth: 220 },
-                    })
+                      __next40pxDefaultSize: true,
+                      __nextHasNoMarginBottom: true,
+                      style: { minWidth: 260 },
+                    }),
+                    el(
+                      Button,
+                      {
+                        className: "button is-secondary",
+                        onClick: function () {
+                          setAttr({ containerBg: "" });
+                        },
+                      },
+                      __("Nulstil baggrund", "nowonline")
+                    )
+                  ),
+                  el(
+                    "div",
+                    { className: "now-elt-muted" },
+                    __("Mål vælges automatisk på frontend:", "nowonline"),
+                    " ",
+                    el(
+                      "code",
+                      {},
+                      "[data-now-bg], .now-bg, [data-nowonline-bg], .nowonline-bg"
+                    ),
+                    ". ",
+                    __(
+                      "Marker ønsket container i Elementor med en af disse.",
+                      "nowonline"
+                    )
                   )
                 ),
+
+                // ====== Button ======
                 el(
                   PanelBody,
-                  {
-                    title: __("Target container", "nowonline"),
-                    initialOpen: false,
-                  },
-                  el(SelectControl, {
-                    label: __("Mode", "nowonline"),
-                    value: containerTargetMode,
-                    onChange: function (v) {
-                      setAttr({ containerTargetMode: v });
+                  { title: __("Knap", "nowonline"), initialOpen: false },
+                  // Tekstfarve
+                  el(
+                    "div",
+                    {
+                      style: {
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        marginBottom: 8,
+                      },
                     },
-                    options: [
-                      {
-                        label: __("Auto (outer wrapper)", "nowonline"),
-                        value: "auto",
+                    el(
+                      "div",
+                      { style: { minWidth: 120 } },
+                      __("Tekstfarve", "nowonline")
+                    ),
+                    el(ColorPalette, {
+                      value: btnTextColor || "",
+                      onChange: function (v) {
+                        setAttr({ btnTextColor: v || "" });
                       },
-                      {
-                        label: __("Elementor data-id", "nowonline"),
-                        value: "data-id",
+                    }),
+                    el(TextControl, {
+                      value: btnTextColor || "",
+                      onChange: function (v) {
+                        setAttr({ btnTextColor: (v || "").trim() });
                       },
-                      {
-                        label: __("CSS id (#id)", "nowonline"),
-                        value: "css_id",
+                      placeholder: __("fx #ffffff eller rgba()", "nowonline"),
+                      __next40pxDefaultSize: true,
+                      __nextHasNoMarginBottom: true,
+                      style: { minWidth: 260 },
+                    })
+                  ),
+                  // Borderfarve
+                  el(
+                    "div",
+                    {
+                      style: {
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        marginBottom: 8,
                       },
-                      {
-                        label: __("CSS class (.class)", "nowonline"),
-                        value: "css_class",
+                    },
+                    el(
+                      "div",
+                      { style: { minWidth: 120 } },
+                      __("Borderfarve", "nowonline")
+                    ),
+                    el(ColorPalette, {
+                      value: btnBorderColor || "",
+                      onChange: function (v) {
+                        setAttr({ btnBorderColor: v || "" });
                       },
-                      {
-                        label: __("Custom selector", "nowonline"),
-                        value: "selector",
+                    }),
+                    el(TextControl, {
+                      value: btnBorderColor || "",
+                      onChange: function (v) {
+                        setAttr({ btnBorderColor: (v || "").trim() });
                       },
-                    ],
+                      placeholder: __("fx #000000 eller rgba()", "nowonline"),
+                      __next40pxDefaultSize: true,
+                      __nextHasNoMarginBottom: true,
+                      style: { minWidth: 260 },
+                    })
+                  ),
+                  // Border bredde
+                  el(TextControl, {
+                    label: __("Border bredde", "nowonline"),
+                    value: btnBorderWidth || "",
+                    onChange: function (v) {
+                      setAttr({ btnBorderWidth: (v || "").trim() });
+                    },
+                    help: __(
+                      "Fx 2px, 0.125rem eller 0 for ingen.",
+                      "nowonline"
+                    ),
+                    __next40pxDefaultSize: true,
+                    __nextHasNoMarginBottom: true,
                   }),
-                  containerTargetMode !== "auto"
-                    ? el(TextControl, {
-                        label: __("Value", "nowonline"),
-                        value: containerTarget || "",
-                        onChange: function (v) {
-                          setAttr({ containerTarget: v || "" });
+                  // Border radius
+                  el(TextControl, {
+                    label: __("Border radius", "nowonline"),
+                    value: btnBorderRadius || "",
+                    onChange: function (v) {
+                      setAttr({ btnBorderRadius: (v || "").trim() });
+                    },
+                    help: __("Fx 8px, 0.5rem eller 50%.", "nowonline"),
+                    __next40pxDefaultSize: true,
+                    __nextHasNoMarginBottom: true,
+                  }),
+                  // Reset
+                  el(
+                    "div",
+                    { style: { marginTop: 8 } },
+                    el(
+                      Button,
+                      {
+                        className: "button is-secondary",
+                        onClick: function () {
+                          setAttr({
+                            btnTextColor: "",
+                            btnBorderColor: "",
+                            btnBorderWidth: "",
+                            btnBorderRadius: "",
+                          });
                         },
-                        placeholder:
-                          containerTargetMode === "data-id"
-                            ? __("e.g. e05f2aa", "nowonline")
-                            : containerTargetMode === "css_id"
-                            ? __("e.g. hero (without #)", "nowonline")
-                            : containerTargetMode === "css_class"
-                            ? __("e.g. section-hero (without .)", "nowonline")
-                            : __("e.g. .elementor-section .inner", "nowonline"),
-                      })
-                    : null
+                      },
+                      __("Nulstil knap-stil", "nowonline")
+                    ),
+                    el(
+                      "div",
+                      { className: "now-elt-muted", style: { marginTop: 8 } },
+                      __("Gælder knappen med ", "nowonline"),
+                      el("code", {}, 'id="now-link-link"'),
+                      "."
+                    )
+                  )
                 )
               );
             }
+
             function BackgroundTab() {
               return el(
                 "div",
@@ -1204,10 +1310,6 @@
                 (blockProps.className || "") + " now-elt-edit-root"
               ).trim(),
             });
-            if (containerBg)
-              rootProps.style = Object.assign({}, rootProps.style || {}, {
-                backgroundColor: containerBg,
-              });
 
             return el(
               "div",
@@ -1229,7 +1331,6 @@
                   },
                 });
               }, {}),
-              // Tabbar
               el(
                 "div",
                 { className: "now-elt-tabbar", style: { margin: "10px 0" } },
@@ -1238,7 +1339,6 @@
                 TabBtn("background", __("Baggrund", "nowonline")),
                 TabBtn("advanced", __("Advanced", "nowonline"))
               ),
-              // Paneer (persistent mount)
               el(
                 "div",
                 {
@@ -1328,14 +1428,54 @@
         });
       }
 
-      if (window.console)
-        console.info(
-          "[NowOnline] ELT variations:",
-          Array.isArray(MAP) ? MAP.length : 0
-        );
+      if (window.console) console.info("[NowOnline] ELT registered.");
     } catch (e) {
       if (window && window.console)
         console.warn("[NowOnline Elementor Blocks] init error", e);
     }
   });
+})();
+
+// File: assets/frontend.js
+(function () {
+  "use strict";
+
+  function pickTarget(root) {
+    if (!root) return null;
+    var sel = [
+      "[data-now-bg]",
+      ".now-bg",
+      "[data-nowonline-bg]",
+      ".nowonline-bg",
+    ];
+    for (var i = 0; i < sel.length; i++) {
+      var el = root.querySelector(sel[i]);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  function applyBgColor(root, color) {
+    var target = pickTarget(root) || root;
+    if (!color) {
+      target.style.removeProperty("background-color");
+      return;
+    }
+    target.style.setProperty("background-color", color, "important");
+  }
+
+  function boot() {
+    var roots = document.querySelectorAll(
+      ".now-elt-frontend-root[data-now-bg-value]"
+    );
+    for (var i = 0; i < roots.length; i++) {
+      var r = roots[i];
+      var color = r.getAttribute("data-now-bg-value") || "";
+      if (color) applyBgColor(r, color);
+    }
+  }
+
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", boot);
+  else boot();
 })();

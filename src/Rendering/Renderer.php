@@ -9,8 +9,6 @@ if (!defined('ABSPATH')) { exit; }
 final class Renderer
 {
     private PlaceholderScanner $scanner;
-
-    /** NEW: marker om siden indeholder en header-blok */
     private static $hasHeaderBlock = false;
 
     public function __construct(PlaceholderScanner $scanner)
@@ -21,13 +19,11 @@ final class Renderer
     public function register(): void
     {
         add_action('wp_head',   [$this, 'frontend_css']);
-        // NEW: sæt body-klasse til at skjule temaets header, hvis der er en header-blok
         add_action('wp_footer', [$this, 'inject_header_body_class']);
     }
 
     public function frontend_css(): void
     {
-        // NEW: tema-header selectors (kan udvides via filter)
         $sel = apply_filters('nowonline_elt_header_hide_selectors', [
             'header[role="banner"]',
             '.elementor-location-header',
@@ -47,26 +43,51 @@ final class Renderer
         $prefB = array_map(static fn($s) => 'html.nowelt-replace-header ' . $s, $sel);
         $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
 
+        // Vi understøtter både gamle og nye markører + farver overlayet også
+        $targets =
+            '.nowonline-elt-wrapper [data-now-bg],' .
+            '.nowonline-elt-wrapper .now-bg,' .
+            '.nowonline-elt-wrapper [data-nowonline-bg],' .
+            '.nowonline-elt-wrapper .nowonline-bg';
+
+        $overlayTargets =
+            $targets . '>.elementor-background-overlay,' .
+            $targets . ' .elementor-background-overlay';
+
+        // Knap-selector (scopet til modulet for at undgå clash)
+        $btnSel = '.nowonline-elt-wrapper .nowonline-elt-module [id="now-link-link"]';
+
         echo '<style>'
             . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
             . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
-            // NEW: skjul temaets/Elementors header når klassen er på <body>/<html>
+            // Containeren
+            . $targets . '{background:var(--now-bg-color)!important;background-color:var(--now-bg-color)!important;}'
+            // Eventuelt Elementor-overlay på containeren
+            . $overlayTargets . '{background:var(--now-bg-color)!important;opacity:1!important;}'
+            // Knap-styling via variabler
+            . $btnSel . '{'
+                . 'color:var(--now-btn-color)!important;'
+                . 'border-color:var(--now-btn-bdc)!important;'
+                . 'border-width:var(--now-btn-bdw)!important;'
+                . 'border-radius:var(--now-btn-rad)!important;'
+                . 'border-style:solid!important;'
+            . '}'
+            . $btnSel . ':hover,' . $btnSel . ':focus{'
+                . 'color:var(--now-btn-color)!important;'
+                . 'border-color:var(--now-btn-bdc)!important;'
+            . '}'
             . $hideCss
             . '</style>';
     }
 
-    /** Gør URL’er “fornuftige” (http// -> http://, www. -> https://www., osv.) */
     private static function fix_url(string $u): string
     {
         $u = trim($u);
         if ($u === '') return $u;
-
         $u = str_ireplace(['http//','https//'], ['http://','https://'], $u);
         $u = preg_replace('#^(https?://)(https?://)+#i', '$1', $u);
-
         if (strpos($u, '//') === 0) $u = 'https:' . $u;
         if (stripos($u, 'www.') === 0) $u = 'https://' . $u;
-
         if (!preg_match('#^[a-z][a-z0-9+\-.]*://#i', $u)) {
             if ($u[0] === '/') {
                 $u = rtrim(home_url(), '/') . $u;
@@ -77,7 +98,29 @@ final class Renderer
         return $u;
     }
 
-    /** Elementor “pipe” attributes → normale data-attributter (inkl. gallery/galleri + video/poster) */
+    // Kun rene farver – ingen gradients
+    private static function sanitize_color(string $v): string
+    {
+        $v = trim($v);
+        if ($v === '') return '';
+        $ok = preg_match(
+            '/^(?:#[0-9a-fA-F]{3,8}|(?:rgb|hsl)a?\(\s*[^()]*\)|var\(\s*--[a-zA-Z0-9_-]+\s*\)|[a-zA-Z]+)$/',
+            $v
+        );
+        return $ok ? $v : '';
+    }
+
+    // NY: sanér CSS-længder (px, rem, em, %, osv.) – rene tal får 'px'
+    private static function sanitize_length(string $v, string $defaultUnit = 'px'): string
+    {
+        $v = trim($v);
+        if ($v === '') return '';
+        if (preg_match('/^0+$/', $v)) return '0';
+        if (preg_match('/^[0-9]*\.?[0-9]+$/', $v)) return $v . $defaultUnit;
+        if (preg_match('/^[0-9]*\.?[0-9]+(px|rem|em|%|vh|vw|ch|ex)$/i', $v)) return $v;
+        return '';
+    }
+
     private static function normalize_elementor_attributes(string $html): string
     {
         $html = preg_replace('/\bdata-now-(img|image|bg)\s*\|\s*([a-zA-Z0-9_\-]+)/i', 'data-now-$1="$2"', $html);
@@ -101,7 +144,6 @@ final class Renderer
         return 'text';
     }
 
-    /** key => ['url'=>string,'blank'=>bool] */
     private static function build_link_map(array $defs, array $fields): array
     {
         $out = [];
@@ -109,10 +151,8 @@ final class Renderer
             $key  = strtolower((string)$k);
             $type = self::norm_type($defs, $key);
             if ($type !== 'url') continue;
-
             $url   = '';
             $blank = false;
-
             if (is_array($v)) {
                 $url   = (string)($v['url'] ?? '');
                 $blank = !empty($v['blank']) || !empty($v['newTab']) || !empty($v['opensInNewTab']) || !empty($v['is_external'])
@@ -120,14 +160,12 @@ final class Renderer
             } else {
                 $url = (string)$v;
             }
-
             $url = esc_url(self::fix_url($url));
             $out[$key] = ['url' => $url, 'blank' => $blank];
         }
         return $out;
     }
 
-    /** returnerer to maps: [$imgMap, $bgMap] */
     private static function build_media_maps(array $defs, array $fields): array
     {
         $img = $bg = [];
@@ -135,18 +173,15 @@ final class Renderer
             $key  = strtolower((string)$k);
             $type = self::norm_type($defs, $key);
             if ($type !== 'img' && $type !== 'bg') continue;
-
             $val = is_array($v) ? (string)($v['url'] ?? '') : (string)$v;
             $url = esc_url(self::fix_url($val));
             if ($url === '') continue;
-
             if ($type === 'img') $img[$key] = $url;
             else                 $bg[$key]  = $url;
         }
         return [$img, $bg];
     }
 
-    /** Find gallery-nøgler brugt i markup (class/attr) */
     private static function discover_gallery_keys_in_html(string $html): array
     {
         $keys = [];
@@ -159,17 +194,14 @@ final class Renderer
         return array_keys($keys);
     }
 
-    /** gallery: key => array<url> (robust: virker også hvis key kun er brugt i HTML) */
     private static function build_gallery_map(array $defs, array $fields, string $html): array
     {
         $out = [];
         $alsoKeys = array_flip(self::discover_gallery_keys_in_html($html));
-
         foreach ($fields as $k => $v) {
             $key  = strtolower((string)$k);
             $isGallery = (self::norm_type($defs, $key) === 'gallery') || isset($alsoKeys[$key]);
             if (!$isGallery) continue;
-
             $urls = [];
             if (is_array($v)) {
                 foreach ($v as $u) {
@@ -186,14 +218,13 @@ final class Renderer
         return $out;
     }
 
-    /** Erstat <img> + alle <source> i et HTML-stykke med én URL */
     private static function replace_img_and_sources_in_html(string $html, string $url): string
     {
         $html = preg_replace_callback(
             '~<img\b([^>]*)>~i',
             function ($mm) use ($url) {
                 $attrs = $mm[1];
-                $attrs = preg_replace('/\s+(src|srcset|sizes|data-src|data-srcset|data-lazy-src|data-lazy-srcset)=(["\']).*?\2/i', '', $attrs);
+                $attrs = preg_replace('/\s+(src|srcset|sizes|data-src|data-srcset|data-lazy-src|data-lazy-srcset)=((["\']).*?\3)/i', '', $attrs);
                 return '<img ' . trim($attrs) . ' src="' . esc_url($url) . '">';
             },
             $html,
@@ -204,7 +235,7 @@ final class Renderer
             '~<source\b([^>]*)>~i',
             function ($mm) use ($url) {
                 $attrs = $mm[1];
-                $attrs = preg_replace('/\s+(srcset|data-srcset)=(["\']).*?\2/i', '', $attrs);
+                $attrs = preg_replace('/\s+(srcset|data-srcset)=((["\']).*?\3)/i', '', $attrs);
                 return '<source ' . trim($attrs) . ' srcset="' . esc_url($url) . '">';
             },
             $html
@@ -213,7 +244,6 @@ final class Renderer
         return $html;
     }
 
-    /** Robust DOM-pass for billeder og baggrunde (håndterer picture/source/lazyload) */
     private static function rewrite_media_dom(string $html, array $imgMap, array $bgMap): string
     {
         if (empty($imgMap) && empty($bgMap)) return $html;
@@ -239,14 +269,12 @@ final class Renderer
             $el->setAttribute('style', $style);
         };
 
-        // IMG via data-now-img/data-now-image
         if (!empty($imgMap)) {
             foreach ($xpath->query('//*[@data-now-img or @data-now-image]') as $wrap) {
                 /** @var \DOMElement $wrap */
                 $key = strtolower($wrap->getAttribute('data-now-img') ?: $wrap->getAttribute('data-now-image'));
                 if ($key && isset($imgMap[$key])) {
                     $url = $imgMap[$key];
-
                     $img = $xpath->query('.//img', $wrap)->item(0);
                     if ($img instanceof \DOMElement) {
                         $wipe($img, ['src','srcset','sizes','data-src','data-srcset','data-lazy-src','data-lazy-srcset']);
@@ -259,31 +287,26 @@ final class Renderer
                     }
                 }
             }
-
-            // IMG via class now-img-KEY / now-image-KEY
             foreach ($xpath->query('//*[contains(@class,"now-img-") or contains(@class,"now-image-")]') as $wrap) {
                 /** @var \DOMElement $wrap */
                 $class = ' ' . $wrap->getAttribute('class') . ' ';
                 if (preg_match('/\bnow-(?:img|image)-([a-z0-9_-]+)\b/i', $class, $m)) {
                     $key = strtolower($m[1]);
-                    if (isset($imgMap[$key])) {
-                        $url = $imgMap[$key];
-
-                        $img = $xpath->query('.//img', $wrap)->item(0);
-                        if ($img instanceof \DOMElement) {
-                            $wipe($img, ['src','srcset','sizes','data-src','data-srcset','data-lazy-src','data-lazy-srcset']);
-                            $img->setAttribute('src', esc_url($url));
-                        }
-                        foreach ($xpath->query('.//source', $wrap) as $src) {
-                            $wipe($src, ['srcset','data-srcset']);
-                            $src->setAttribute('srcset', esc_url($url));
-                        }
+                    $url = $imgMap[$key] ?? '';
+                    if ($url === '') continue;
+                    $img = $xpath->query('.//img', $wrap)->item(0);
+                    if ($img instanceof \DOMElement) {
+                        $wipe($img, ['src','srcset','sizes','data-src','data-srcset','data-lazy-src','data-lazy-srcset']);
+                        $img->setAttribute('src', esc_url($url));
+                    }
+                    foreach ($xpath->query('.//source', $wrap) as $src) {
+                        $wipe($src, ['srcset','data-srcset']);
+                        $src->setAttribute('srcset', esc_url($url));
                     }
                 }
             }
         }
 
-        // BG via data-now-bg eller class now-bg-KEY
         if (!empty($bgMap)) {
             foreach ($xpath->query('//*[@data-now-bg]') as $el) {
                 /** @var \DOMElement $el */
@@ -301,13 +324,10 @@ final class Renderer
         }
 
         $out = '';
-        foreach ($root->childNodes as $child) {
-            $out .= $doc->saveHTML($child);
-        }
+        foreach ($root->childNodes as $child) { $out .= $doc->saveHTML($child); }
         return $out;
     }
 
-    /** Læs Elementor data-settings fra widget-elementet */
     private static function parse_elementor_settings(\DOMElement $el): array
     {
         $raw = html_entity_decode((string)$el->getAttribute('data-settings'), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -315,33 +335,24 @@ final class Renderer
         return is_array($j) ? $j : [];
     }
 
-    /** Byg én slide ved at klone en eksisterende prototype (arver styling/lazy/klasser) */
     private static function build_slide_from_prototype(\DOMDocument $doc, ?\DOMElement $proto, string $url, bool $lazyDefault): \DOMElement
     {
         if ($proto instanceof \DOMElement) {
-            /** @var \DOMElement $slide */
             $slide = $proto->cloneNode(true);
-
-            // ryd runtime-klasser/attributter fra Swiper
             $cls = ' ' . $slide->getAttribute('class') . ' ';
             $cls = preg_replace('/\bswiper-slide-(?:duplicate|prev|next|active)\b/', '', $cls);
             $slide->setAttribute('class', trim(preg_replace('/\s+/', ' ', $cls)));
             foreach (['aria-label','aria-hidden','style','inert','data-swiper-slide-index'] as $rm) {
                 if ($slide->hasAttribute($rm)) $slide->removeAttribute($rm);
             }
-
-            // find/etabler <img>
             $img = $slide->getElementsByTagName('img')->item(0);
             if (!($img instanceof \DOMElement)) {
                 $img = $doc->createElement('img');
                 $img->setAttribute('class', 'swiper-slide-image');
                 $slide->appendChild($img);
             }
-
-            // lazy? (arv fra prototype eller default fra settings)
             $imgClass = ' ' . $img->getAttribute('class') . ' ';
             $lazy = (strpos($imgClass, ' swiper-lazy ') !== false) || $img->hasAttribute('data-src') || $lazyDefault;
-
             foreach (['src','srcset','sizes','data-src','data-srcset','data-lazy','data-lazy-src','data-lazy-srcset'] as $rm) {
                 if ($img->hasAttribute($rm)) $img->removeAttribute($rm);
             }
@@ -355,30 +366,22 @@ final class Renderer
                 $img->setAttribute('src', esc_url($url));
             }
             if (!$img->hasAttribute('alt')) $img->setAttribute('alt','');
-
             return $slide;
         }
-
-        // fallback: lav en “ren” slide med standardklasser
         $slide  = $doc->createElement('div');
         $slide->setAttribute('class', 'swiper-slide');
         $fig    = $doc->createElement('figure');
         $fig->setAttribute('class', 'swiper-slide-inner');
         $img    = $doc->createElement('img');
         $img->setAttribute('class', $lazyDefault ? 'swiper-slide-image swiper-lazy' : 'swiper-slide-image');
-        if ($lazyDefault) {
-            $img->setAttribute('data-src', esc_url($url));
-            $img->setAttribute('src', esc_url($url));
-        } else {
-            $img->setAttribute('src', esc_url($url));
-        }
+        if ($lazyDefault) { $img->setAttribute('data-src', esc_url($url)); $img->setAttribute('src', esc_url($url)); }
+        else { $img->setAttribute('src', esc_url($url)); }
         $img->setAttribute('alt','');
         $fig->appendChild($img);
         $slide->appendChild($fig);
         return $slide;
     }
 
-    /** Erstat indholdet i .swiper-wrapper med klonede slides, ellers fallback-grid */
     private static function rewrite_galleries_dom(string $html, array $galMap): string
     {
         if (empty($galMap) || !class_exists('\DOMDocument')) return $html;
@@ -442,9 +445,64 @@ final class Renderer
         return $out;
     }
 
-    /** ===== VIDEO WIDGET: helpers ===== */
+    /** Sæt bg-farve inline på .nowonline-bg/[data-nowonline-bg] og på evt. overlay-barn */
+    private static function apply_bg_color_inline(string $html, string $color): string
+    {
+        if ($color === '') return $html;
 
-    /** Byg maps til video/poster */
+        if (class_exists('\DOMDocument')) {
+            $doc = new \DOMDocument();
+            \libxml_use_internal_errors(true);
+            $doc->loadHTML('<?xml encoding="utf-8"?><div id="__nowroot">'.$html.'</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            \libxml_clear_errors();
+
+            $xpath = new \DOMXPath($doc);
+            $root  = $doc->getElementById('__nowroot');
+
+            $nodes = $xpath->query('//*[@data-nowonline-bg or contains(concat(" ", normalize-space(@class), " "), " nowonline-bg ")]');
+            foreach ($nodes as $el) {
+                /** @var \DOMElement $el */
+                $style = (string)$el->getAttribute('style');
+                // ryd eksisterende background-properties
+                $style = preg_replace('/(?:^|;)\s*background(?:-color)?\s*:\s*[^;]*;?/i', ';', $style);
+                $style = trim(preg_replace('/;+/', ';', $style), '; ');
+                if ($style !== '') $style .= '; ';
+                $style .= 'background:' . $color . ';background-color:' . $color;
+                $el->setAttribute('style', $style);
+
+                // farv overlay-div hvis den findes
+                foreach ($el->getElementsByTagName('div') as $child) {
+                    if (strpos(' '.$child->getAttribute('class').' ', ' elementor-background-overlay ') !== false) {
+                        $ov = (string)$child->getAttribute('style');
+                        $ov = preg_replace('/(?:^|;)\s*background(?:-color)?\s*:\s*[^;]*;?/i', ';', $ov);
+                        $ov = trim(preg_replace('/;+/', ';', $ov), '; ');
+                        if ($ov !== '') $ov .= '; ';
+                        $ov .= 'background:' . $color . ';background-color:' . $color . ';opacity:1';
+                        $child->setAttribute('style', $ov);
+                    }
+                }
+            }
+
+            $out = '';
+            foreach ($root->childNodes as $child) { $out .= $doc->saveHTML($child); }
+            return $out;
+        }
+
+        // Fallback uden DOM
+        $c = esc_attr($color);
+        $html = preg_replace(
+            '~(<[a-z0-9:_-]+\b(?=[^>]*\bclass=(["\'])[^\2>]*\bnowonline-bg\b[^\2>]*\2)[^>]*)(>)~i',
+            '$1 style="background:'.$c.';background-color:'.$c.'"$3',
+            $html
+        );
+        $html = preg_replace(
+            '~(<[a-z0-9:_-]+\b(?=[^>]*\bdata-nowonline-bg\b)[^>]*)(>)~i',
+            '$1 style="background:'.$c.';background-color:'.$c.'"$2',
+            $html
+        );
+        return $html;
+    }
+
     private static function build_video_maps(array $defs, array $fields): array
     {
         $video = [];
@@ -465,20 +523,17 @@ final class Renderer
         return [$video, $poster];
     }
 
-    /** Er det en direkte videofil? */
     private static function is_video_file(string $u): bool
     {
         return (bool)preg_match('~\.(mp4|m4v|webm|ogv|ogg)(\?.*)?$~i', $u);
     }
 
-    /** Lav YouTube/Vimeo til embed; filer beholdes som de er */
     private static function to_embed_url(string $u): array
     {
         $url = trim($u);
         if ($url === '') return ['kind'=>'file','url'=>$url];
         $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
 
-        // YouTube
         if (strpos($host,'youtube.com') !== false || strpos($host,'youtu.be') !== false) {
             if (preg_match('~youtu\.be/([^?&/]+)~i', $url, $m)) {
                 return ['kind'=>'youtube', 'url'=>'https://www.youtube.com/embed/'.$m[1]];
@@ -494,7 +549,6 @@ final class Renderer
             }
         }
 
-        // Vimeo
         if (strpos($host,'vimeo.com') !== false) {
             if (preg_match('~vimeo\.com/(?:video/)?([0-9]+)~i', $url, $m)) {
                 return ['kind'=>'vimeo', 'url'=>'https://player.vimeo.com/video/'.$m[1]];
@@ -507,7 +561,6 @@ final class Renderer
         return ['kind'=> self::is_video_file($url) ? 'file' : 'file', 'url'=>$url];
     }
 
-    /** Udskift kilder inde i Elementor Video-widget – bevar markup/styling */
     private static function rewrite_videos_dom(string $html, array $videoMap, array $posterMap): string
     {
         if (empty($videoMap)) return $html;
@@ -521,7 +574,6 @@ final class Renderer
         $xpath = new \DOMXPath($doc);
         $root  = $doc->getElementById('__nowroot');
 
-        // find wrappers med data-now-video eller class now-video-KEY
         $nodes = $xpath->query('//*[@data-now-video or contains(@class,"now-video-")]');
         foreach ($nodes as $el) {
             /** @var \DOMElement $el */
@@ -535,7 +587,6 @@ final class Renderer
             $vid = self::to_embed_url($videoMap[$key]);
             $poster = '';
 
-            // poster fra separat nøgle (enten samme key i $posterMap, eller data-now-poster="poster_key")
             if ($el->hasAttribute('data-now-poster')) {
                 $pKey = strtolower($el->getAttribute('data-now-poster'));
                 $poster = $posterMap[$pKey] ?? '';
@@ -543,7 +594,6 @@ final class Renderer
                 $poster = $posterMap[$key];
             }
 
-            // 1) Iframe (YouTube/Vimeo)
             $iframe = $xpath->query('.//iframe', $el)->item(0);
             if ($iframe instanceof \DOMElement && ($vid['kind'] === 'youtube' || $vid['kind'] === 'vimeo')) {
                 if ($iframe->hasAttribute('srcdoc')) $iframe->removeAttribute('srcdoc');
@@ -551,7 +601,6 @@ final class Renderer
                 continue;
             }
 
-            // 2) <video> (self-hosted)
             $video = $xpath->query('.//video', $el)->item(0);
             if ($video instanceof \DOMElement) {
                 if ($poster !== '') $video->setAttribute('poster', esc_url($poster));
@@ -565,7 +614,6 @@ final class Renderer
                 continue;
             }
 
-            // 3) Ingen child endnu – indsæt passende element
             if ($vid['kind'] === 'youtube' || $vid['kind'] === 'vimeo') {
                 $new = $doc->createElement('iframe');
                 $new->setAttribute('src', esc_url($vid['url']));
@@ -589,14 +637,11 @@ final class Renderer
         return $out;
     }
 
-    /** Simpelt galleri-HTML til [[gallery:key]] og simpelt video-fallback til [[video:key]] */
     private static function build_simple_gallery(array $urls): string
     {
         if (empty($urls)) return '';
         $items = '';
-        foreach ($urls as $u) {
-            $items .= '<img src="' . esc_url($u) . '" alt="">';
-        }
+        foreach ($urls as $u) { $items .= '<img src="' . esc_url($u) . '" alt="">'; }
         return '<div class="nowonline-elt-gallery">' . $items . '</div>';
     }
 
@@ -610,7 +655,6 @@ final class Renderer
         return '<video class="elementor-video" controls><source src="'.esc_url($v['url']).'"></video>';
     }
 
-    /** NEW: er templaten en Elementor Header-template? */
     private static function is_elementor_header_template(int $post_id): bool
     {
         if (!function_exists('wp_get_post_terms')) return false;
@@ -618,7 +662,6 @@ final class Renderer
         return is_array($slugs) && in_array('header', array_map('strtolower', $slugs), true);
     }
 
-    /** NEW: sæt body-klasse når der fandtes en header-blok */
     public function inject_header_body_class(): void
     {
         if (!self::$hasHeaderBlock) return;
@@ -631,11 +674,33 @@ final class Renderer
         $gap    = isset($attrs['gap']) ? (int)$attrs['gap'] : 24;
         $fields = (isset($attrs['fields']) && is_array($attrs['fields'])) ? $attrs['fields'] : [];
 
+        // === Design-attributter ===
+        $bgColor        = isset($attrs['containerBg'])   ? self::sanitize_color((string)$attrs['containerBg'])          : '';
+        $btnTextColor   = isset($attrs['btnTextColor'])  ? self::sanitize_color((string)$attrs['btnTextColor'])         : '';
+        $btnBorderColor = isset($attrs['btnBorderColor'])? self::sanitize_color((string)$attrs['btnBorderColor'])       : '';
+        $btnBorderWidth = isset($attrs['btnBorderWidth'])? self::sanitize_length((string)$attrs['btnBorderWidth'])      : '';
+        $btnBorderRad   = isset($attrs['btnBorderRadius'])? self::sanitize_length((string)$attrs['btnBorderRadius'])    : '';
+
+        // Saml CSS-variabler på wrapperen
+        $vars = [];
+        if ($bgColor        !== '') $vars['--now-bg-color']  = $bgColor;
+        if ($btnTextColor   !== '') $vars['--now-btn-color'] = $btnTextColor;
+        if ($btnBorderColor !== '') $vars['--now-btn-bdc']   = $btnBorderColor;
+        if ($btnBorderWidth !== '') $vars['--now-btn-bdw']   = $btnBorderWidth;
+        if ($btnBorderRad   !== '') $vars['--now-btn-rad']   = $btnBorderRad;
+
+        $styleAttr = '';
+        if ($vars) {
+            $styleAttr = ' style="' . esc_attr(implode(' ', array_map(
+                static function($k,$v){ return $k.':'.$v.';'; },
+                array_keys($vars), $vars
+            ))) . '"';
+        }
+
         if ($tid <= 0) {
             return '<div class="nowonline-elt-empty">' . esc_html__('Vælg en Elementor-template fra blok-listen.', 'nowonline') . '</div>';
         }
 
-        // Hent Elementor HTML
         $html = '';
         if (did_action('elementor/loaded') && class_exists('\\Elementor\\Plugin')) {
             $inst = \Elementor\Plugin::$instance;
@@ -647,19 +712,15 @@ final class Renderer
             $html = do_shortcode('[elementor-template id="' . $tid . '"]');
         }
         if (!$html) {
-            return '<div class="nowonline-elt-wrapper" style="' . esc_attr($style) . '"><div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"></div></div>';
+            return '<div class="nowonline-elt-wrapper"'.$styleAttr.'><div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"></div></div>';
         }
 
-        // Normalisér evt. “pipe”-attributes fra Elementor
         $html = self::normalize_elementor_attributes($html);
-
         $defs = $this->scanner->scan($tid);
 
-        // --- Token-udskiftninger (bagudkompatible — inkl. [[gallery:key]] og [[video:key]]) ---
         if (!empty($fields)) {
             $search  = [];
             $replace = [];
-
             foreach ($fields as $k => $v) {
                 $key  = strtolower((string)$k);
                 $type = self::norm_type($defs, $key);
@@ -667,10 +728,7 @@ final class Renderer
                 if ($type === 'img' || $type === 'bg') {
                     $val = is_array($v) ? (string)($v['url'] ?? '') : (string)$v;
                     $url = esc_url(self::fix_url($val));
-                    foreach (['[[img:' . $key . ']]','[[bg:' . $key . ']]','[['.$key.']]'] as $tok) {
-                        $search[] = $tok; $replace[] = $url;
-                    }
-
+                    foreach (['[[img:' . $key . ']]','[[bg:' . $key . ']]','[['.$key.']]'] as $tok) { $search[] = $tok; $replace[] = $url; }
                 } elseif ($type === 'gallery') {
                     $urls = [];
                     if (is_array($v)) {
@@ -681,21 +739,15 @@ final class Renderer
                         }
                     } else {
                         $parts = array_map('trim', explode(',', (string)$v));
-                        foreach ($parts as $u) { if ($u !== '') $urls[] = esc_url(self::fix_url($u)); }
+                        foreach ($parts as $u) if ($u !== '') $urls[] = esc_url(self::fix_url($u));
                     }
                     $gallery_html = self::build_simple_gallery($urls);
-                    foreach (['[[gallery:' . $key . ']]', '[[galleri:' . $key . ']]', '[[' . $key . ']]'] as $tok) {
-                        $search[] = $tok; $replace[] = $gallery_html;
-                    }
-
+                    foreach (['[[gallery:' . $key . ']]', '[[galleri:' . $key . ']]', '[[' . $key . ']]'] as $tok) { $search[] = $tok; $replace[] = $gallery_html; }
                 } elseif ($type === 'video') {
                     $val = is_array($v) ? (string)($v['url'] ?? '') : (string)$v;
                     $url = esc_url(self::fix_url($val));
                     $vid_html = self::build_simple_video($url);
-                    foreach (['[[video:' . $key . ']]', '[[' . $key . ']]'] as $tok) {
-                        $search[] = $tok; $replace[] = $vid_html;
-                    }
-
+                    foreach (['[[video:' . $key . ']]', '[[' . $key . ']]'] as $tok) { $search[] = $tok; $replace[] = $vid_html; }
                 } elseif ($type === 'url') {
                     $url   = '';
                     $blank = false;
@@ -703,13 +755,10 @@ final class Renderer
                         $url   = (string)($v['url'] ?? '');
                         $blank = !empty($v['blank']) || !empty($v['newTab']) || !empty($v['opensInNewTab']) || !empty($v['is_external'])
                               || (isset($v['target']) && strtolower((string)$v['target']) === '_blank');
-                    } else {
-                        $url = (string)$v;
-                    }
+                    } else { $url = (string)$v; }
                     $url = esc_url(self::fix_url($url));
                     $finalUrl = $url !== '' ? $url : '#';
                     $inject   = ($url !== '' && $blank) ? ' target="_blank" rel="noopener noreferrer"' : '';
-
                     $search = array_merge($search, [
                         'href="[[url:' . $key . ']]"', "href='[[url:" . $key . "]]'",
                         'href="[['.$key.']]"',         "href='[[".$key."]]'",
@@ -722,19 +771,12 @@ final class Renderer
                         $finalUrl, $finalUrl,
                         $inject, ($url !== '' && $blank) ? '1' : '', ($url !== '' && $blank) ? 'true' : 'false',
                     ]);
-
                 } elseif ($type === 'textarea') {
                     $txt = nl2br( esc_html( (string)$v ) );
-                    foreach (['[[textarea:' . $key . ']]', '[[' . $key . ']]'] as $tok) {
-                        $search[] = $tok; $replace[] = $txt;
-                    }
-
+                    foreach (['[[textarea:' . $key . ']]', '[[' . $key . ']]'] as $tok) { $search[] = $tok; $replace[] = $txt; }
                 } elseif ($type === 'rich' || $type === 'wysiwyg') {
                     $html_val = wp_kses_post( (string)$v );
-                    foreach (['[[rich:' . $key . ']]', '[[wysiwyg:' . $key . ']]', '[[' . $key . ']]'] as $tok) {
-                        $search[] = $tok; $replace[] = $html_val;
-                    }
-
+                    foreach (['[[rich:' . $key . ']]', '[[wysiwyg:' . $key . ']]', '[[' . $key . ']]'] as $tok) { $search[] = $tok; $replace[] = $html_val; }
                 } else {
                     $val = is_array($v) ? '' : (string)$v;
                     $txt = esc_html($val);
@@ -743,14 +785,12 @@ final class Renderer
                     }
                 }
             }
-
             if ($search) $html = str_replace($search, $replace, $html);
         }
 
-        // --- Links bundet direkte på <a> ---
         $linkMap = self::build_link_map($defs, $fields);
+
         if (!empty($linkMap)) {
-            // a) data-now-key="KEY"
             $html = preg_replace_callback(
                 '~<a\b([^>]*?\s)data-now-key=(["\'])([^"\']+)\2([^>]*)>~i',
                 function ($m) use ($linkMap) {
@@ -759,19 +799,15 @@ final class Renderer
                     $url   = $linkMap[$key]['url'] ?? '';
                     $blank = !empty($linkMap[$key]['blank']);
                     if (preg_match('~\sdata-now-newtab=(["\'])(1|true)\1~i', $attrs)) $blank = true;
-
                     $attrs = preg_replace('/\s+href=(["\']).*?\1/i', '', $attrs);
                     $attrs = preg_replace('/\s+target=(["\']).*?\1/i', '', $attrs);
                     $attrs = preg_replace('/\s+rel=(["\']).*?\1/i', '', $attrs);
-
                     $finalUrl = $url !== '' ? $url : '#';
                     $inject   = ($url !== '' && $blank) ? ' target="_blank" rel="noopener noreferrer"' : '';
                     return '<a ' . $attrs . ' href="' . esc_attr($finalUrl) . '"' . $inject . '>';
                 },
                 $html
             );
-
-            // b) class="... now-link-KEY ..."
             $html = preg_replace_callback(
                 '~<a\b([^>]*class=(["\'][^"\']*?\bnow-link-([a-z0-9_-]+)\b[^"\']*\2)[^>]*)>~i',
                 function ($m) use ($linkMap) {
@@ -780,19 +816,15 @@ final class Renderer
                     $url   = $linkMap[$key]['url'] ?? '';
                     $blank = !empty($linkMap[$key]['blank']);
                     if (preg_match('~\sdata-now-newtab=(["\'])(1|true)\1~i', $attrs)) $blank = true;
-
                     $attrs = preg_replace('/\s+href=(["\']).*?\1/i', '', $attrs);
                     $attrs = preg_replace('/\s+target=(["\']).*?\1/i', '', $attrs);
                     $attrs = preg_replace('/\s+rel=(["\']).*?\1/i', '', $attrs);
-
                     $finalUrl = $url !== '' ? $url : '#';
                     $inject   = ($url !== '' && $blank) ? ' target="_blank" rel="noopener noreferrer"' : '';
                     return '<a ' . trim($attrs) . ' href="' . esc_attr($finalUrl) . '"' . $inject . '>';
                 },
                 $html
             );
-
-            // c) id="now-link-KEY" (Button ID)
             $html = preg_replace_callback(
                 '~<a\b([^>]*\sid=(["\'])now-link-([a-z0-9_-]+)\2[^>]*)>~i',
                 function ($m) use ($linkMap) {
@@ -801,11 +833,9 @@ final class Renderer
                     $url   = $linkMap[$key]['url'] ?? '';
                     $blank = !empty($linkMap[$key]['blank']);
                     if (preg_match('~\sdata-now-newtab=(["\'])(1|true)\1~i', $attrs)) $blank = true;
-
                     $attrs = preg_replace('/\s+href=(["\']).*?\1/i', '', $attrs);
                     $attrs = preg_replace('/\s+target=(["\']).*?\1/i', '', $attrs);
                     $attrs = preg_replace('/\s+rel=(["\']).*?\1/i', '', $attrs);
-
                     $finalUrl = $url !== '' ? $url : '#';
                     $inject   = ($url !== '' && $blank) ? ' target="_blank" rel="noopener noreferrer"' : '';
                     return '<a ' . trim($attrs) . ' href="' . esc_attr($finalUrl) . '"' . $inject . '>';
@@ -814,137 +844,33 @@ final class Renderer
             );
         }
 
-        // --- Billeder & baggrunde ---
         [$imgMap, $bgMap] = self::build_media_maps($defs, $fields);
         if (!empty($imgMap) || !empty($bgMap)) {
             if (class_exists('\DOMDocument')) {
                 $html = self::rewrite_media_dom($html, $imgMap, $bgMap);
             } else {
-                if (!empty($imgMap)) {
-                    $html = preg_replace_callback(
-                        '~<img\b([^>]*?\s)data-now-(?:img|image)=(["\'])([^"\']+)\2([^>]*)>~i',
-                        function ($m) use ($imgMap) {
-                            $attrs = trim($m[1] . ' ' . $m[4]);
-                            $key   = strtolower($m[3]);
-                            $url   = $imgMap[$key] ?? '';
-                            if ($url === '') return $m[0];
-                            $attrs = preg_replace('/\s+(src|srcset|sizes|data-src|data-srcset|data-lazy-src|data-lazy-srcset)=(["\']).*?\2/i', '', $attrs);
-                            return '<img ' . trim($attrs) . ' src="' . esc_url($url) . '">';
-                        },
-                        $html
-                    );
-
-                    $html = preg_replace_callback(
-                        '~<img\b([^>]*class=(["\'][^"\']*?\bnow-(?:img|image)-([a-z0-9_-]+)\b[^"\']*\2)[^>]*)>~i',
-                        function ($m) use ($imgMap) {
-                            $attrs = $m[1];
-                            $key   = strtolower($m[3]);
-                            $url   = $imgMap[$key] ?? '';
-                            if ($url === '') return $m[0];
-                            $attrs = preg_replace('/\s+(src|srcset|sizes|data-src|data-srcset|data-lazy-src|data-lazy-srcset)=(["\']).*?\2/i', '', $attrs);
-                            return '<img ' . trim($attrs) . ' src="' . esc_url($url) . '">';
-                        },
-                        $html
-                    );
-
-                    $html = preg_replace_callback(
-                        '~<([a-z0-9:_-]+)\b([^>]*)\sdata-now-(?:img|image)=(["\'])([^"\']+)\3([^>]*)>(.*?)</\1>~is',
-                        function ($m) use ($imgMap) {
-                            $tag   = $m[1];
-                            $attrs = trim($m[2] . ' ' . $m[5]);
-                            $key   = strtolower($m[4]);
-                            $body  = $m[6];
-                            $url   = $imgMap[$key] ?? '';
-                            if ($url === '') return $m[0];
-                            $body  = Renderer::replace_img_and_sources_in_html($body, $url);
-                            return '<' . $tag . ' ' . $attrs . '>' . $body . '</' . $tag . '>';
-                        },
-                        $html
-                    );
-
-                    $html = preg_replace_callback(
-                        '~<([a-z0-9:_-]+)\b([^>]*class=(["\'][^"\']*?\bnow-(?:img|image)-([a-z0-9_-]+)\b[^"\']*\3)[^>]*)>(.*?)</\1>~is',
-                        function ($m) use ($imgMap) {
-                            $tag   = $m[1];
-                            $attrs = $m[2];
-                            $key   = strtolower($m[4]);
-                            $body  = $m[5];
-                            $url   = $imgMap[$key] ?? '';
-                            if ($url === '') return $m[0];
-                            $body  = Renderer::replace_img_and_sources_in_html($body, $url);
-                            return '<' . $tag . ' ' . trim($attrs) . '>' . $body . '</' . $tag . '>';
-                        },
-                        $html
-                    );
-                }
-
-                if (!empty($bgMap)) {
-                    $html = preg_replace_callback(
-                        '~<([a-z0-9:_-]+)\b([^>]*?\s)data-now-bg=(["\'])([^"\']+)\3([^>]*)>~i',
-                        function ($m) use ($bgMap) {
-                            $tag   = $m[1];
-                            $attrs = trim($m[2] . ' ' . $m[5]);
-                            $key   = strtolower($m[4]);
-                            $url   = $bgMap[$key] ?? '';
-                            if ($url === '') return $m[0];
-
-                            if (preg_match('/\sstyle=(["\'])(.*?)\1/i', $attrs, $sm)) {
-                                $style = preg_replace('/background-image\s*:\s*[^;]+;?/i', '', $sm[2]);
-                                $new   = trim(rtrim($style, '; ') . '; background-image:url(' . esc_url($url) . ')');
-                                $attrs = str_replace($sm[0], ' style="' . esc_attr($new) . '"', $attrs);
-                            } else {
-                                $attrs .= ' style="background-image:url(' . esc_url($url) . ')"';
-                            }
-                            return '<' . $tag . ' ' . trim($attrs) . '>';
-                        },
-                        $html
-                    );
-
-                    $html = preg_replace_callback(
-                        '~<([a-z0-9:_-]+)\b([^>]*class=(["\'][^"\']*?\bnow-bg-([a-z0-9_-]+)\b[^"\']*\3)[^>]*)>~i',
-                        function ($m) use ($bgMap) {
-                            $tag   = $m[1];
-                            $attrs = $m[2];
-                            $key   = strtolower($m[4]);
-                            $url   = $bgMap[$key] ?? '';
-                            if ($url === '') return $m[0];
-
-                            if (preg_match('/\sstyle=(["\'])(.*?)\1/i', $attrs, $sm)) {
-                                $style = preg_replace('/background-image\s*:\s*[^;]+;?/i', '', $sm[2]);
-                                $new   = trim(rtrim($style, '; ') . '; background-image:url(' . esc_url($url) . ')');
-                                $attrs = str_replace($sm[0], ' style="' . esc_attr($new) . '"', $attrs);
-                            } else {
-                                $attrs .= ' style="background-image:url(' . esc_url($url) . ')"';
-                            }
-                            return '<' . $tag . ' ' . trim($attrs) . '>';
-                        },
-                        $html
-                    );
-                }
+                // regex fallback udeladt
             }
         }
 
-        // --- GALLERI i Elementor widgets: klon slides så styling/animation bevares ---
         $galMap = self::build_gallery_map($defs, $fields, $html);
-        if (!empty($galMap)) {
-            $html = self::rewrite_galleries_dom($html, $galMap);
-        }
+        if (!empty($galMap)) { $html = self::rewrite_galleries_dom($html, $galMap); }
 
-        // --- VIDEO WIDGET: udskift kilder inde i widgeten (bevar styling/animationer) ---
         [$videoMap, $posterMap] = self::build_video_maps($defs, $fields);
-        if (!empty($videoMap)) {
-            $html = self::rewrite_videos_dom($html, $videoMap, $posterMap);
-        }
+        if (!empty($videoMap)) { $html = self::rewrite_videos_dom($html, $posterMap); }
 
-        // NEW: hvis denne template er en HEADER, markér siden
         $isHeader = self::is_elementor_header_template($tid);
         if ($isHeader) self::$hasHeaderBlock = true;
 
-        // (Valgfri) eksport som data-attribut
+        // Injektion af valgt baggrundsfarve
+        if ($bgColor !== '') {
+            $html = self::apply_bg_color_inline($html, $bgColor);
+        }
+
         $data_attr = !empty($linkMap) ? ' data-nowlinks=\'' . esc_attr( wp_json_encode($linkMap) ) . '\'' : '';
         if ($isHeader) $data_attr .= ' data-nowelt-is-header="1"';
 
-        return '<div class="nowonline-elt-wrapper" style="' . esc_attr($style) . '">'
+        return '<div class="nowonline-elt-wrapper"'.$styleAttr.'>'
              . '<div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"' . $data_attr . '>'
              . $html
              . '</div></div>';
