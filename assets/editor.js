@@ -94,7 +94,6 @@
   var InspectorControls = B.InspectorControls || "div";
   var MediaUpload = B.MediaUpload;
   var RichText = B.RichText;
-  var TabPanel = C.TabPanel;
   var useBlockProps =
     B && B.useBlockProps
       ? B.useBlockProps
@@ -162,13 +161,67 @@
     u = u
       .replace(/^http\/:\/\//i, "http://")
       .replace(/^https\/:\/\//i, "https://");
-    u = u.replace(/^(https?:\/\/)(https?:\/\/)/i, "$1");
-    u = u.replace(/^(https?:\/\/)+/i, "$1");
+    u = u
+      .replace(/^(https?:\/\/)(https?:\/\/)/i, "$1")
+      .replace(/^(https?:\/\/)+/i, "$1");
     if (/^www\./i.test(u)) u = "https://" + u;
-    if (!/^[a-z][a-z0-9+.\-]*:\/\//i.test(u) && /^[^\/\s]+\.[^\s]+/.test(u)) {
+    if (!/^[a-z][a-z0-9+.\-]*:\/\//i.test(u) && /^[^\/\s]+\.[^\s]+/.test(u))
       u = "https://" + u;
-    }
     return u;
+  }
+
+  // --- Rich sanitizer -------------------------------------------------------
+  function sanitizeRichHtml(input) {
+    var html = String(input || "");
+    if (!html) return "";
+    var wrap = document.createElement("div");
+    wrap.innerHTML = html;
+
+    function walk(node) {
+      if (!node || node.nodeType !== 1) return;
+      var tag = node.tagName.toLowerCase();
+      var cls = node.getAttribute("class") || "";
+      if (/elementor-/.test(cls)) node.removeAttribute("class"); // why: undgå Elementor-runtime klasser
+
+      if (/^h[1-6]$/.test(tag)) {
+        var p = document.createElement("p");
+        while (node.firstChild) p.appendChild(node.firstChild);
+        node.parentNode.replaceChild(p, node);
+      }
+
+      var allowed = {
+        a: ["href", "target", "rel"],
+        img: ["src", "alt"],
+        span: ["style"],
+        p: ["style"],
+        div: ["style"],
+        strong: [],
+        em: [],
+        b: [],
+        i: [],
+        u: [],
+        br: [],
+        ul: [],
+        ol: [],
+        li: [],
+        code: [],
+      };
+      var keep =
+        allowed[tag] ||
+        (tag === "span" || tag === "p" || tag === "div" ? ["style"] : []);
+      var toRemove = [];
+      for (var i = 0; i < node.attributes.length; i++) {
+        var name = node.attributes[i].name;
+        if (keep.indexOf(name) === -1) toRemove.push(name);
+      }
+      toRemove.forEach(function (n) {
+        node.removeAttribute(n);
+      });
+      Array.prototype.slice.call(node.children || []).forEach(walk);
+    }
+
+    Array.prototype.slice.call(wrap.children || []).forEach(walk);
+    return wrap.innerHTML;
   }
 
   // --- type helpers ----------------------------------------------------------
@@ -293,12 +346,10 @@
       block.setAttributes({ fields: next });
     }
     function onSelectVideo(media) {
-      var u = (media && media.url) || "";
-      setField(key, u);
+      setField(key, (media && media.url) || "");
     }
     function onSelectPoster(media) {
-      var u = (media && media.url) || "";
-      setField(posterKey, u);
+      setField(posterKey, (media && media.url) || "");
     }
     var vidPreview = url
       ? el(
@@ -487,7 +538,7 @@
     );
   }
 
-  // --- PagePicker for URL fields (kun når hook findes) ----------------------
+  // --- PagePicker for URL fields --------------------------------------------
   function PagePicker(p) {
     var block = p.block,
       def = p.def,
@@ -657,9 +708,8 @@
             background: { type: "object", default: {} },
             responsive: { type: "object", default: {} },
             spacing: { type: "object", default: {} },
-            // Design tab attrs
             containerBg: { type: "string", default: "" },
-            containerTargetMode: { type: "string", default: "auto" }, // auto | data-id | css_id | css_class | selector
+            containerTargetMode: { type: "string", default: "auto" },
             containerTarget: { type: "string", default: "" },
           },
 
@@ -671,6 +721,12 @@
             var containerTargetMode = attrs.containerTargetMode || "auto";
             var containerTarget = attrs.containerTarget || "";
 
+            // Persistente faner
+            var _tab = useState("content"),
+              activeTab = _tab[0],
+              setActiveTab = _tab[1];
+            var contentVisible = activeTab === "content";
+
             function onPick(e) {
               var id = parseInt(e.target.value || "0", 10) || 0;
               props.setAttributes({ templateId: id, fields: {} });
@@ -680,7 +736,6 @@
               next[k] = v;
               props.setAttributes({ fields: next });
             }
-
             function setAttr(next) {
               props.setAttributes(next);
             }
@@ -727,7 +782,7 @@
               );
             }
 
-            // Tekst (korte)
+            // Tekst (korte/textarea)
             var textInputs = textDefs
               .map(function (def) {
                 var value = fields[def.key] || "";
@@ -756,7 +811,7 @@
                 })
               );
 
-            // URL inputs – PagePicker hvis hook findes, ellers fallback
+            // URL inputs
             function UrlInput(def) {
               if (HAS_USESELECT)
                 return el(PagePicker, { key: def.key, block: props, def: def });
@@ -826,13 +881,15 @@
               return GalleryField(props, def);
             });
 
-            // --- Rich (TinyMCE hvis muligt, ellers RichText) -----------------
+            // --- Rich (TinyMCE) ----------------------------------------------
             function TinyMCEField(def) {
               var fieldKey = def.key;
               var initial =
                 (props.attributes.fields &&
                   props.attributes.fields[fieldKey]) ||
                 "";
+              var cleanedInitial = sanitizeRichHtml(initial);
+
               function safe(s) {
                 return String(s || "").replace(/[^a-z0-9_-]/gi, "");
               }
@@ -842,55 +899,98 @@
               var uniqueId = "nowelt-" + instId + "-" + safe(fieldKey);
               var idRef = useRef(uniqueId);
               var taRef = useRef(null);
+
               useEffect(
                 function () {
                   if (!OldEditor || !OldEditor.initialize) return;
-                  try {
-                    OldEditor.remove(idRef.current);
-                  } catch (e) {}
-                  OldEditor.initialize(idRef.current, {
-                    tinymce: {
-                      wpautop: true,
-                      menubar: false,
-                      toolbar1:
-                        "formatselect,bold,italic,link,bullist,numlist,blockquote,alignleft,aligncenter,alignright,undo,redo",
-                    },
-                    quicktags: true,
-                    mediaButtons: false,
-                  });
-                  var ed, poll;
+                  var disposed = false,
+                    ed = null,
+                    wait = null,
+                    guard = null;
+
+                  function hasEditor() {
+                    return !!(
+                      window.tinymce &&
+                      window.tinymce.get &&
+                      window.tinymce.get(idRef.current)
+                    );
+                  }
                   function sync() {
-                    var val =
+                    var raw =
                       ed && typeof ed.getContent === "function"
                         ? ed.getContent()
                         : taRef.current
                         ? taRef.current.value
                         : "";
+                    var val = sanitizeRichHtml(raw);
                     var next = Object.assign({}, props.attributes.fields || {});
                     next[fieldKey] = val || "";
                     props.setAttributes({ fields: next });
                   }
-                  poll = setInterval(function () {
-                    ed = window.tinymce && window.tinymce.get(idRef.current);
-                    if (ed) {
-                      clearInterval(poll);
-                      if (initial) ed.setContent(initial);
-                      ed.on("change keyup input setcontent", sync);
-                    }
-                  }, 50);
+                  function bindWhenReady() {
+                    wait = setInterval(function () {
+                      if (disposed) return;
+                      ed =
+                        window.tinymce &&
+                        window.tinymce.get &&
+                        window.tinymce.get(idRef.current);
+                      if (ed) {
+                        clearInterval(wait);
+                        if (cleanedInitial) ed.setContent(cleanedInitial);
+                        ed.on("change keyup input setcontent", sync);
+                      }
+                    }, 50);
+                  }
+                  function initIfNeeded() {
+                    if (!contentVisible) return; // init kun når fanen er synlig
+                    if (hasEditor()) return;
+                    try {
+                      OldEditor.remove(idRef.current);
+                    } catch (e) {}
+                    OldEditor.initialize(idRef.current, {
+                      tinymce: {
+                        wpautop: true,
+                        menubar: false,
+                        toolbar1:
+                          "formatselect,bold,italic,link,bullist,numlist,blockquote,alignleft,aligncenter,alignright,undo,redo",
+                      },
+                      quicktags: true,
+                      mediaButtons: false,
+                    });
+                    bindWhenReady();
+                  }
+
+                  // første init hvis synlig
+                  initIfNeeded();
+
+                  // vagt: hvis editor-instansen forsvinder mens fanen er synlig → re-init
+                  guard = setInterval(function () {
+                    if (!disposed && contentVisible && !hasEditor())
+                      initIfNeeded();
+                  }, 200);
+
                   if (taRef.current)
                     taRef.current.addEventListener("input", sync);
+
                   return function () {
+                    disposed = true;
                     try {
                       OldEditor.remove(idRef.current);
                     } catch (e) {}
                     if (taRef.current)
                       taRef.current.removeEventListener("input", sync);
-                    clearInterval(poll);
+                    clearInterval(wait);
+                    clearInterval(guard);
                   };
                 },
-                [props.clientId, props.attributes.templateId, fieldKey]
+                [
+                  props.clientId,
+                  props.attributes.templateId,
+                  fieldKey,
+                  contentVisible,
+                ]
               );
+
               return el(
                 "div",
                 { key: fieldKey, className: "now-elt-sec-item" },
@@ -898,7 +998,7 @@
                 el("textarea", {
                   id: idRef.current,
                   ref: taRef,
-                  defaultValue: initial,
+                  defaultValue: cleanedInitial,
                 })
               );
             }
@@ -908,7 +1008,7 @@
                 ? richDefs.map(TinyMCEField)
                 : RichText
                 ? richDefs.map(function (def) {
-                    var value = fields[def.key] || "";
+                    var value = sanitizeRichHtml(fields[def.key] || "");
                     return el(
                       "div",
                       { key: def.key, className: "now-elt-sec-item" },
@@ -917,7 +1017,13 @@
                         tagName: "div",
                         value: value,
                         onChange: function (v) {
-                          setField(def.key, v || "");
+                          var cleaned = sanitizeRichHtml(v || "");
+                          var next = Object.assign(
+                            {},
+                            props.attributes.fields || {}
+                          );
+                          next[def.key] = cleaned;
+                          props.setAttributes({ fields: next });
                         },
                         placeholder: __("Skriv formateret tekst…", "nowonline"),
                         allowedFormats: [
@@ -939,7 +1045,25 @@
                     ),
                   ];
 
-            // --- Tabs content -------------------------------------------------
+            // --- Tabs (persistent mount) -------------------------------------
+            function TabBtn(name, title) {
+              var active = activeTab === name;
+              return el(
+                "button",
+                {
+                  type: "button",
+                  className:
+                    "button " + (active ? "is-primary" : "is-secondary"),
+                  onClick: function () {
+                    setActiveTab(name);
+                  },
+                  "aria-selected": active,
+                  style: { marginRight: 6 },
+                },
+                title
+              );
+            }
+
             function ContentTab() {
               var pickerRow = el(
                 "div",
@@ -960,7 +1084,6 @@
                 )
               );
             }
-
             function DesignTab() {
               return el(
                 "div",
@@ -1052,7 +1175,6 @@
                 )
               );
             }
-
             function BackgroundTab() {
               return el(
                 "div",
@@ -1076,56 +1198,16 @@
               );
             }
 
-            var tabsUI = TabPanel
-              ? el(
-                  TabPanel,
-                  {
-                    tabs: [
-                      {
-                        name: "content",
-                        title: __("Indhold", "nowonline"),
-                        className: "nowonline-tab",
-                      },
-                      {
-                        name: "design",
-                        title: __("Design", "nowonline"),
-                        className: "nowonline-tab",
-                      },
-                      {
-                        name: "background",
-                        title: __("Baggrund", "nowonline"),
-                        className: "nowonline-tab",
-                      },
-                      {
-                        name: "advanced",
-                        title: __("Advanced", "nowonline"),
-                        className: "nowonline-tab",
-                      },
-                    ],
-                    initialTabName: "content",
-                  },
-                  function (tab) {
-                    if (!tab || !tab.name) return ContentTab();
-                    if (tab.name === "design") return DesignTab();
-                    if (tab.name === "background") return BackgroundTab();
-                    if (tab.name === "advanced") return AdvancedTab();
-                    return ContentTab();
-                  }
-                )
-              : el("div", {}, ContentTab());
-
             var blockProps = useBlockProps ? useBlockProps() : {};
             var rootProps = Object.assign({}, blockProps, {
               className: (
                 (blockProps.className || "") + " now-elt-edit-root"
               ).trim(),
             });
-            // Editor preview of background color on wrapper
-            if (containerBg) {
+            if (containerBg)
               rootProps.style = Object.assign({}, rootProps.style || {}, {
                 backgroundColor: containerBg,
               });
-            }
 
             return el(
               "div",
@@ -1147,7 +1229,54 @@
                   },
                 });
               }, {}),
-              tabsUI,
+              // Tabbar
+              el(
+                "div",
+                { className: "now-elt-tabbar", style: { margin: "10px 0" } },
+                TabBtn("content", __("Indhold", "nowonline")),
+                TabBtn("design", __("Design", "nowonline")),
+                TabBtn("background", __("Baggrund", "nowonline")),
+                TabBtn("advanced", __("Advanced", "nowonline"))
+              ),
+              // Paneer (persistent mount)
+              el(
+                "div",
+                {
+                  hidden: activeTab !== "content",
+                  style: {
+                    display: activeTab === "content" ? "block" : "none",
+                  },
+                },
+                ContentTab()
+              ),
+              el(
+                "div",
+                {
+                  hidden: activeTab !== "design",
+                  style: { display: activeTab === "design" ? "block" : "none" },
+                },
+                DesignTab()
+              ),
+              el(
+                "div",
+                {
+                  hidden: activeTab !== "background",
+                  style: {
+                    display: activeTab === "background" ? "block" : "none",
+                  },
+                },
+                BackgroundTab()
+              ),
+              el(
+                "div",
+                {
+                  hidden: activeTab !== "advanced",
+                  style: {
+                    display: activeTab === "advanced" ? "block" : "none",
+                  },
+                },
+                AdvancedTab()
+              ),
               el(
                 InspectorControls,
                 {},
@@ -1171,7 +1300,7 @@
         });
       }
 
-      // Variationer (en pr. Elementor-template)
+      // Variationer
       if (
         Blocks &&
         typeof Blocks.registerBlockVariation === "function" &&
