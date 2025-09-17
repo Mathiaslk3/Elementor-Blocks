@@ -1,236 +1,324 @@
+/* File: assets/editor.css */
+
+
 /* Basics */
+
 .now-elt-wrap {
-  background: #fff;
-  border: 1px solid #e2e4e7;
-  padding: 8px;
-  margin: 8px 0;
+    background: #fff;
+    border: 1px solid #e2e4e7;
+    padding: 8px;
+    margin: 8px 0;
 }
+
 .now-elt-label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 4px;
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+    /* +2px for clearer pairing with field */
 }
+
 .now-elt-sec {
-  background: #fff;
-  border: 1px solid #e2e4e7;
-  padding: 8px;
-  margin: 8px 0;
+    background: #fff;
+    border: 1px solid #e2e4e7;
+    padding: 16px;
+    /* was 8px */
+    margin: 16px 0 20px;
+    /* was 8px */
+    border-radius: 8px;
 }
+
 .now-elt-sec-title {
-  font-weight: 600;
-  margin-bottom: 6px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    /* was 6px */
 }
+
+
+/* NEW: Inner items (each field group = more separation) */
+
+.now-elt-sec-item {
+    background: #fbfcfd;
+    border: 1px solid #e8ebef;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 12px 0;
+}
+
+.now-elt-sec-item+.now-elt-sec-item {
+    margin-top: 16px;
+    /* extra space between adjacent fields */
+}
+
+
+/* Better spacing for editors inside items */
+
+.now-elt-sec-item .wp-editor-wrap,
+.now-elt-sec-item .components-textarea-control__input,
+.now-elt-sec-item textarea {
+    margin-top: 8px;
+}
+
+
+/* Optional: a subtle top divider inside a section when many fields */
+
+.now-elt-sec-item:not(:first-child) {
+    box-shadow: 0 -1px 0 0 #eef0f2 inset;
+}
+
 .now-elt-imgprev {
-  max-width: 100%;
-  height: auto;
-  display: block;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  margin-bottom: 6px;
-  background: #f8f8f8;
+    max-width: 100%;
+    height: auto;
+    display: block;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    /* was 4px */
+    margin-bottom: 8px;
+    /* was 6px */
+    background: #f8f8f8;
 }
+
 .now-elt-imgprev.now-elt-noimg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #777;
-  height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #777;
+    height: 140px;
 }
+
 .now-elt-tokens {
-  margin-top: 6px;
-  opacity: 0.75;
-  font-size: 12px;
+    margin-top: 8px;
+    /* was 6px */
+    opacity: 0.75;
+    font-size: 12px;
 }
+
 .now-elt-muted {
-  opacity: 0.7;
+    opacity: 0.7;
 }
+
 .now-elt-gap {
-  margin-top: 8px;
+    margin-top: 12px;
+    /* was 8px */
 }
+
 .now-elt-select {
-  margin-top: 8px;
+    margin-top: 10px;
+    /* was 8px */
 }
+
+
+/* Page picker tweaks (clearer list spacing) */
+
+.now-elt-urlpicker {
+    display: block;
+}
+
+.now-elt-pages-list {
+    margin-top: 8px;
+}
+
+.now-elt-pages-list .button {
+    margin-bottom: 6px;
+}
+
 
 /* Inserter tile icon */
+
 .block-editor-inserter__panel .block-editor-block-icon img.nowonline-elt-icon {
-  width: 40px !important;
-  height: 40px !important;
-  border-radius: 6px;
-  object-fit: cover;
-}
-.block-editor-inserter__panel
-  .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
-  .block-editor-block-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 6px;
+    object-fit: cover;
 }
 
+.block-editor-inserter__panel .block-editor-block-types-list__item[data-type="nowonline/elt-template"] .block-editor-block-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
 /* Canvas preview (toppen af blockens edit UI) */
-/* Canvas preview – fyld hele bredden og bevar format */
+
 .now-elt-canvas-preview {
-  padding: 10px 12px;
-  margin: 10px 0 14px;
-  background: #fff;
-  border: 1px solid #e2e4e7;
-  border-radius: 10px;
+    padding: 10px 12px;
+    margin: 10px 0 14px;
+    background: #fff;
+    border: 1px solid #e2e4e7;
+    border-radius: 10px;
 }
 
 .now-elt-preview-img-wrap {
-  width: 100%;
-  aspect-ratio: 16 / 9; /* fin standard; justeres automatisk med contain */
-  border: 1px solid #e2e4e7;
-  border-radius: 8px;
-  background: #f6f7f7;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border: 1px solid #e2e4e7;
+    border-radius: 8px;
+    background: #f6f7f7;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .now-elt-preview-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain; /* vis hele billedet */
-  display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
 }
+
 
 /* Inserter tiles: bigger + use template thumbnail */
-.block-editor-inserter__results
-  .block-editor-block-types-list__item[data-type="nowonline/elt-template"] {
-  min-width: 220px;
+
+.block-editor-inserter__results .block-editor-block-types-list__item[data-type="nowonline/elt-template"] {
+    min-width: 220px;
 }
-.block-editor-inserter__results
-  .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
-  .block-editor-block-icon {
-  width: 220px;
-  height: 140px;
-  border: 1px solid #e2e4e7;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
+
+.block-editor-inserter__results .block-editor-block-types-list__item[data-type="nowonline/elt-template"] .block-editor-block-icon {
+    width: 220px;
+    height: 140px;
+    border: 1px solid #e2e4e7;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
 }
-.block-editor-inserter__results
-  .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
-  .block-editor-block-icon
-  img.now-elt-var-thumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+
+.block-editor-inserter__results .block-editor-block-types-list__item[data-type="nowonline/elt-template"] .block-editor-block-icon img.now-elt-var-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
-.block-editor-inserter__results
-  .block-editor-block-types-list__item[data-type="nowonline/elt-template"]
-  .block-editor-block-types-list__item-title {
-  margin-top: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 220px;
+
+.block-editor-inserter__results .block-editor-block-types-list__item[data-type="nowonline/elt-template"] .block-editor-block-types-list__item-title {
+    margin-top: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
 }
+
+
 /* Editor: Center og fast bredde for vores block */
+
 .wp-block-nowonline-elt-template .now-elt-edit-root {
-  width: 1360px; /* ønsket arbejdsbredde */
-  max-width: 100%; /* så den ikke sprænger editorens viewport */
-  margin-left: auto; /* centrer i editoren */
-  margin-right: auto; /* centrer i editoren */
-  box-sizing: border-box;
+    width: 1360px;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
 }
+
 
 /* Hvis du kun viser et billede som preview: centrer og respekter proportioner */
-.wp-block-nowonline-elt-template .now-elt-edit-root > img {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto; /* centrer selve billedet */
+
+.wp-block-nowonline-elt-template .now-elt-edit-root>img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
 }
+
 
 /* Sikrer at dine sektioner ikke “stikker ud” */
+
 .wp-block-nowonline-elt-template .now-elt-wrap,
 .wp-block-nowonline-elt-template .now-elt-sec {
-  max-width: 100%;
+    max-width: 100%;
 }
+
+
 /* Fjern editorens max-width for vores blok */
-.editor-styles-wrapper
-  .block-editor-block-list__layout
-  .block-editor-block-list__block[data-type="nowonline/elt-template"],
+
+.editor-styles-wrapper .block-editor-block-list__layout .block-editor-block-list__block[data-type="nowonline/elt-template"],
 .editor-styles-wrapper .wp-block-nowonline-elt-template {
-  max-width: none !important;
-  width: 100% !important;
+    max-width: none !important;
+    width: 100% !important;
 }
+
 
 /* Gør hele blokken 100% bred (i editoren) og centrer indholdet */
+
 .editor-styles-wrapper .wp-block-nowonline-elt-template .now-elt-edit-root {
-  width: 1360px; /* ønsket arbejdsbredde */
-  max-width: 100%; /* skaler ned på små skærme */
-  margin-left: auto; /* centrer */
-  margin-right: auto; /* centrer */
-  box-sizing: border-box;
+    width: 1360px;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
 }
+
 
 /* Hvis du kun viser et IMG i preview, så centrer og respekter størrelse */
-.editor-styles-wrapper
-  .wp-block-nowonline-elt-template
-  .now-elt-edit-root
-  > img {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto;
+
+.editor-styles-wrapper .wp-block-nowonline-elt-template .now-elt-edit-root>img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
 }
+
+
 /* 1) Override Gutenberg's 800px clamp for our block wrapper */
-.block-editor-block-list__layout.is-root-container
-  > .wp-block-nowonline-elt-template,
-.block-editor-block-list__layout.is-root-container
-  > .block-editor-block-list__block[data-type="nowonline/elt-template"],
-.editor-styles-wrapper .is-root-container > .wp-block-nowonline-elt-template {
-  /* beat the :where(...) rule */
-  max-width: 1360px !important;
-  width: 100% !important; /* still shrink on small viewports */
-  margin-left: auto !important; /* keep centered */
-  margin-right: auto !important;
+
+.block-editor-block-list__layout.is-root-container>.wp-block-nowonline-elt-template,
+.block-editor-block-list__layout.is-root-container>.block-editor-block-list__block[data-type="nowonline/elt-template"],
+.editor-styles-wrapper .is-root-container>.wp-block-nowonline-elt-template {
+    max-width: 1360px !important;
+    width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
 }
+
 
 /* 2) Center your inner editor UI and keep it at 1360px */
+
 .wp-block-nowonline-elt-template .now-elt-edit-root {
-  width: 1360px;
-  max-width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-  box-sizing: border-box;
+    width: 1360px;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
 }
+
 
 /* 3) Your preview <img> should center + scale nicely */
-.wp-block-nowonline-elt-template .now-elt-edit-root > img {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto;
+
+.wp-block-nowonline-elt-template .now-elt-edit-root>img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
 }
+
+
 /* Make our block itself 1360px wide and centered in the editor */
-.block-editor-block-list__layout.is-root-container
-  > .wp-block-nowonline-elt-template {
-  width: 1360px !important;
-  max-width: none !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
+
+.block-editor-block-list__layout.is-root-container>.wp-block-nowonline-elt-template {
+    width: 1360px !important;
+    max-width: none !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
 }
+
 
 /* Inner wrapper the block renders with */
+
 .now-elt-edit-root {
-  width: 1360px !important;
-  max-width: 1360px !important;
-  margin: 0 auto;
-  box-sizing: border-box;
+    width: 1360px !important;
+    max-width: 1360px !important;
+    margin: 0 auto;
+    box-sizing: border-box;
 }
+
 
 /* The preview <img> should always fill that 1360px width */
-.now-elt-edit-root > img {
-  display: block;
-  width: 100% !important; /* scales to 1360px */
-  height: auto !important; /* keep aspect ratio */
+
+.now-elt-edit-root>img {
+    display: block;
+    width: 100% !important;
+    height: auto !important;
 }
 
-.nowonline-elt-wrapper > .nowonline-elt-module {
-  margin: 0px !important;
+.nowonline-elt-wrapper>.nowonline-elt-module {
+    margin: 0px !important;
 }
