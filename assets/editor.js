@@ -100,7 +100,6 @@
     function (v) {
       return [v, function () {}];
     };
-  var useSelect = HAS_USESELECT ? data.useSelect : null;
 
   // Classic editor / TinyMCE API
   var OldEditor = (WP && (WP.editor || WP.oldEditor)) || null;
@@ -128,8 +127,42 @@
     return (M && M[id]) || [];
   }
 
+  // strip “(Rich) / (Text) / (Textarea) / (WYSIWYG)” i labels
+  function cleanLabel(s) {
+    return String(s || "").replace(
+      /\s*\((?:rich|wysiwyg|text|textarea)\)\s*$/i,
+      ""
+    );
+  }
   function labelFor(def) {
-    return def.label || def.key;
+    return cleanLabel(def.label || def.key);
+  }
+
+  // 2-kolonne wrapper (label venstre, felt højre)
+  function Row(label, content, key) {
+    return el(
+      "div",
+      {
+        key: key,
+        className: "now-elt-sec-item",
+        style: {
+          display: "grid",
+          gridTemplateColumns: "260px 1fr",
+          columnGap: "12px",
+          alignItems: "start",
+          margin: "10px 0",
+        },
+      },
+      el(
+        "div",
+        {
+          className: "now-elt-label",
+          style: { paddingTop: 6, fontWeight: 500 },
+        },
+        label
+      ),
+      el("div", { className: "now-elt-field" }, content)
+    );
   }
 
   function tplById(id) {
@@ -160,86 +193,93 @@
     return u;
   }
 
-  // --- Rich sanitizer -------------------------------------------------------
-  /**
-   * Sanitize rich HTML coming from inputs.
-   * inlineOnly=true: unwrap/block-drop <p>, <div>, <h1-6> to avoid invalid markup when injected inside headings
-   */
+  // --- Rich sanitizer (iterativ – undgår recursion/stack overflow) ----------
   function sanitizeRichHtml(input, inlineOnly) {
     var html = String(input || "");
     if (!html) return "";
     var wrap = document.createElement("div");
     wrap.innerHTML = html;
 
-    function unwrap(node) {
-      var parent = node.parentNode;
+    function unwrapElement(node) {
+      var parent = node && node.parentNode;
       if (!parent) return;
       while (node.firstChild) parent.insertBefore(node.firstChild, node);
       parent.removeChild(node);
     }
 
-    function walk(node) {
-      if (!node || node.nodeType !== 1) return;
+    var allowed = {
+      a: ["href", "target", "rel"],
+      img: ["src", "alt"],
+      span: ["style"],
+      p: ["style"],
+      div: ["style"],
+      strong: [],
+      em: [],
+      b: [],
+      i: [],
+      u: [],
+      br: [],
+      ul: [],
+      ol: [],
+      li: [],
+      code: [],
+      h1: [],
+      h2: [],
+      h3: [],
+      h4: [],
+      h5: [],
+      h6: [],
+    };
+
+    var stack = [];
+    for (var i = 0; i < wrap.childNodes.length; i++)
+      stack.push(wrap.childNodes[i]);
+
+    var processed = 0;
+    var LIMIT = 10000;
+
+    while (stack.length && processed < LIMIT) {
+      var node = stack.pop();
+      processed++;
+      if (!node || node.nodeType !== 1) continue;
+
       var tag = node.tagName.toLowerCase();
 
-      // strip Elementor classes to avoid style collisions
+      // Fjern elementor-* klasser
       var cls = node.getAttribute("class") || "";
-      if (/elementor-/.test(cls)) node.removeAttribute("class");
+      if (cls && /elementor-/.test(cls)) node.removeAttribute("class");
 
-      // If inlineOnly: remove block wrappers that would break when inserted in a <h1>
+      // Inline-only: unwrap blokke, men behold børn
       if (
         inlineOnly &&
         (/^h[1-6]$/.test(tag) || tag === "p" || tag === "div")
       ) {
-        var next = node.nextSibling;
-        unwrap(node);
-        if (next && next.nodeType === 1) walk(next);
-        return;
+        var childSnapshot = [];
+        for (var c = node.childNodes.length - 1; c >= 0; c--) {
+          childSnapshot.push(node.childNodes[c]);
+        }
+        unwrapElement(node);
+        for (var s = 0; s < childSnapshot.length; s++)
+          stack.push(childSnapshot[s]);
+        continue;
       }
 
-      // Allowed attributes per tag (we never drop the tag itself)
-      var allowed = {
-        a: ["href", "target", "rel"],
-        img: ["src", "alt"],
-        span: ["style"],
-        p: ["style"],
-        div: ["style"],
-        strong: [],
-        em: [],
-        b: [],
-        i: [],
-        u: [],
-        br: [],
-        ul: [],
-        ol: [],
-        li: [],
-        code: [],
-        // allow headings with no attributes if not inlineOnly
-        h1: [],
-        h2: [],
-        h3: [],
-        h4: [],
-        h5: [],
-        h6: [],
-      };
       var keep =
         allowed[tag] ||
         (tag === "span" || tag === "p" || tag === "div" ? ["style"] : []);
 
-      // remove all non-allowed attributes
-      var toRemove = [];
-      for (var i = 0; i < node.attributes.length; i++) {
-        var name = node.attributes[i].name;
-        if (keep.indexOf(name) === -1) toRemove.push(name);
+      // Fjern ikke-tilladte attributter
+      for (var ai = node.attributes.length - 1; ai >= 0; ai--) {
+        var name = node.attributes[ai].name.toLowerCase();
+        if (keep.indexOf(name) === -1) node.removeAttribute(name);
       }
-      toRemove.forEach(function (n) {
-        node.removeAttribute(n);
-      });
 
-      Array.prototype.slice.call(node.children || []).forEach(walk);
+      // Skub børn på stack
+      for (var ci = node.childNodes.length - 1; ci >= 0; ci--) {
+        stack.push(node.childNodes[ci]);
+      }
     }
 
-    Array.prototype.slice.call(wrap.children || []).forEach(walk);
     return wrap.innerHTML;
   }
 
@@ -247,7 +287,6 @@
   function t(def) {
     return (def && def.type ? String(def.type) : "").toLowerCase().trim();
   }
-
   function k(def) {
     return (def && def.key ? String(def.key) : "").toLowerCase().trim();
   }
@@ -281,31 +320,35 @@
   function isRich(d) {
     return norm(d) === "rich";
   }
-
   function isTextarea(d) {
     return norm(d) === "textarea";
   }
-
   function isUrl(d) {
     return norm(d) === "url";
   }
-
   function isImage(d) {
     var n = norm(d);
     return n === "img" || n === "bg";
   }
-
   function isGallery(d) {
     return norm(d) === "gallery";
   }
-
   function isVideo(d) {
     return norm(d) === "video";
   }
-
   function isHeadingOrText(d) {
     var n = norm(d);
     return n === "text" || n === "p" || /^h[1-6]$/.test(n) || !n;
+  }
+
+  // Heuristik: er dette “knap-tekst”-felt?
+  function isButtonTextDef(def) {
+    var key = String(def.key || "").toLowerCase();
+    var label = String(def.label || "").toLowerCase();
+    var hit =
+      /(cta|knap|button|btn)([_\s-]?text)?$/.test(key) ||
+      /(cta|knap|button|btn)/.test(label);
+    return hit && !isTextarea(def) && !isRich(def);
   }
 
   // --- Image field -----------------------------------------------------------
@@ -324,6 +367,7 @@
       delete next[def.key];
       block.setAttributes({ fields: next });
     }
+
     var preview = url
       ? el("img", { src: url, className: "now-elt-imgprev", alt: "" })
       : el(
@@ -331,34 +375,42 @@
           { className: "now-elt-imgprev now-elt-noimg" },
           __("No image", "nowonline")
         );
-    return el(
-      "div",
-      { key: def.key, className: "now-elt-sec-item" },
-      el("label", { className: "now-elt-label" }, labelFor(def)),
-      preview,
-      MediaUpload
-        ? el(MediaUpload, {
-            onSelect: onSelect,
-            allowedTypes: ["image"],
-            value: 0,
-            render: function (o) {
-              return el(
-                "div",
-                {},
-                el(
-                  "button",
-                  { className: "button", onClick: o.open },
-                  __("Vælg billede", "nowonline")
-                ),
-                el(
-                  "button",
-                  { className: "button is-secondary", onClick: clear },
-                  __("Fjern", "nowonline")
-                )
-              );
-            },
-          })
-        : el("div", {}, __("MediaUpload ikke tilgængelig", "nowonline"))
+
+    return Row(
+      labelFor(def),
+      el(
+        "div",
+        {},
+        preview,
+        MediaUpload
+          ? el(MediaUpload, {
+              onSelect: onSelect,
+              allowedTypes: ["image"],
+              value: 0,
+              render: function (o) {
+                return el(
+                  "div",
+                  {},
+                  el(
+                    "button",
+                    { className: "button", onClick: o.open },
+                    __("Vælg billede", "nowonline")
+                  ),
+                  el(
+                    "button",
+                    {
+                      className: "button is-secondary",
+                      onClick: clear,
+                      style: { marginLeft: 6 },
+                    },
+                    __("Fjern", "nowonline")
+                  )
+                );
+              },
+            })
+          : el("div", {}, __("MediaUpload ikke tilgængelig", "nowonline"))
+      ),
+      def.key
     );
   }
 
@@ -380,26 +432,23 @@
     function onSelectVideo(media) {
       setField(key, (media && media.url) || "");
     }
-
     function onSelectPoster(media) {
       setField(posterKey, (media && media.url) || "");
     }
+
     var vidPreview = url
-      ? el(
-          "video",
-          {
-            src: url,
-            poster: poster || undefined,
-            controls: true,
-            style: { width: "100%", maxWidth: "420px", display: "block" },
-          },
-          null
-        )
+      ? el("video", {
+          src: url,
+          poster: poster || undefined,
+          controls: true,
+          style: { width: "100%", maxWidth: "420px", display: "block" },
+        })
       : el(
           "div",
           { className: "now-elt-imgprev now-elt-noimg" },
           __("Ingen video valgt", "nowonline")
         );
+
     var posterPreview = poster
       ? el("img", {
           src: poster,
@@ -408,88 +457,92 @@
           style: { maxWidth: "210px", marginTop: "6px" },
         })
       : null;
-    return el(
-      "div",
-      { key: key, className: "now-elt-sec-item" },
-      el("label", { className: "now-elt-label" }, labelFor(def)),
-      vidPreview,
-      MediaUpload
-        ? el(MediaUpload, {
-            onSelect: onSelectVideo,
-            allowedTypes: ["video"],
-            value: 0,
-            render: function (o) {
-              return el(
-                "div",
-                { style: { marginTop: "6px" } },
-                el(
-                  "button",
-                  { className: "button", onClick: o.open },
-                  __("Vælg video", "nowonline")
-                ),
-                el(
-                  "button",
-                  {
-                    className: "button is-secondary",
-                    onClick: function () {
-                      setField(key, null);
-                    },
-                    style: { marginLeft: "6px" },
-                  },
-                  __("Fjern", "nowonline")
-                ),
-                el(TextControl, {
-                  type: "url",
-                  value: url || "",
-                  onChange: function (v) {
-                    setField(key, fixUrl(v || ""));
-                  },
-                  placeholder: __("eller indsæt video-URL…", "nowonline"),
-                  style: { display: "block", marginTop: "8px" },
-                })
-              );
-            },
-          })
-        : el("div", {}, __("MediaUpload ikke tilgængelig", "nowonline")),
+
+    return Row(
+      labelFor(def),
       el(
         "div",
-        { style: { marginTop: "10px" } },
-        el(
-          "div",
-          { className: "now-elt-label" },
-          __("Poster (valgfri)", "nowonline")
-        ),
-        posterPreview || null,
+        {},
+        vidPreview,
         MediaUpload
           ? el(MediaUpload, {
-              onSelect: onSelectPoster,
-              allowedTypes: ["image"],
+              onSelect: onSelectVideo,
+              allowedTypes: ["video"],
               value: 0,
               render: function (o) {
                 return el(
                   "div",
-                  {},
+                  { style: { marginTop: 6 } },
                   el(
                     "button",
                     { className: "button", onClick: o.open },
-                    __("Vælg poster", "nowonline")
+                    __("Vælg video", "nowonline")
                   ),
                   el(
                     "button",
                     {
                       className: "button is-secondary",
                       onClick: function () {
-                        setField(posterKey, null);
+                        setField(key, null);
                       },
-                      style: { marginLeft: "6px" },
+                      style: { marginLeft: 6 },
                     },
                     __("Fjern", "nowonline")
-                  )
+                  ),
+                  el(TextControl, {
+                    type: "url",
+                    value: url || "",
+                    onChange: function (v) {
+                      setField(key, fixUrl(v || ""));
+                    },
+                    placeholder: __("eller indsæt video-URL…", "nowonline"),
+                    style: { display: "block", marginTop: 8 },
+                  })
                 );
               },
             })
-          : null
-      )
+          : el("div", {}, __("MediaUpload ikke tilgængelig", "nowonline")),
+        el(
+          "div",
+          { style: { marginTop: 10 } },
+          el(
+            "div",
+            { className: "now-elt-label" },
+            __("Poster (valgfri)", "nowonline")
+          ),
+          posterPreview || null,
+          MediaUpload
+            ? el(MediaUpload, {
+                onSelect: onSelectPoster,
+                allowedTypes: ["image"],
+                value: 0,
+                render: function (o) {
+                  return el(
+                    "div",
+                    {},
+                    el(
+                      "button",
+                      { className: "button", onClick: o.open },
+                      __("Vælg poster", "nowonline")
+                    ),
+                    el(
+                      "button",
+                      {
+                        className: "button is-secondary",
+                        onClick: function () {
+                          setField(posterKey, null);
+                        },
+                        style: { marginLeft: 6 },
+                      },
+                      __("Fjern", "nowonline")
+                    )
+                  );
+                },
+              })
+            : null
+        )
+      ),
+      key
     );
   }
 
@@ -517,6 +570,7 @@
       delete next[def.key];
       block.setAttributes({ fields: next });
     }
+
     var thumbs = value.length
       ? el(
           "div",
@@ -536,189 +590,44 @@
           { className: "now-elt-imgprev now-elt-noimg" },
           __("Ingen billeder i galleriet", "nowonline")
         );
-    return el(
-      "div",
-      { key: def.key, className: "now-elt-sec-item" },
-      el("label", { className: "now-elt-label" }, labelFor(def)),
-      thumbs,
-      MediaUpload
-        ? el(MediaUpload, {
-            onSelect: onSelect,
-            allowedTypes: ["image"],
-            multiple: true,
-            gallery: true,
-            value: 0,
-            render: function (o) {
-              return el(
-                "div",
-                {},
-                el(
-                  "button",
-                  { className: "button", onClick: o.open },
-                  __("Vælg billeder", "nowonline")
-                ),
-                el(
-                  "button",
-                  {
-                    className: "button is-secondary",
-                    onClick: clear,
-                    style: { marginLeft: "6px" },
-                  },
-                  __("Ryd galleri", "nowonline")
-                )
-              );
-            },
-          })
-        : el("div", {}, __("MediaUpload ikke tilgængelig", "nowonline"))
-    );
-  }
 
-  // --- PagePicker for URL fields (kun når hook findes) ----------------------
-  function PagePicker(p) {
-    var block = p.block,
-      def = p.def,
-      fieldKey = def.key;
-    var current = (block.attributes.fields || {})[fieldKey];
-    var currObj =
-      current && typeof current === "object"
-        ? current
-        : { url: current || "", newTab: false, id: 0, type: "external" };
-
-    var sel = useSelect(function (select) {
-      if (!select || !select("core")) return { pages: [], isResolving: false };
-      var s = select("core");
-      var query = {
-        per_page: 100,
-        orderby: "title",
-        order: "asc",
-        status: ["publish", "private"],
-      };
-      return {
-        pages: s.getEntityRecords
-          ? s.getEntityRecords("postType", "page", query) || []
-          : [],
-        isResolving: s.isResolving
-          ? s.isResolving("getEntityRecords", ["postType", "page", query])
-          : false,
-      };
-    }, []);
-
-    var _s = useState(""),
-      search = _s[0],
-      setSearch = _s[1];
-    var pages = sel && sel.pages ? sel.pages : [];
-    if (search && pages.length) {
-      var needle = search.toLowerCase();
-      pages = pages.filter(function (pg) {
-        var t = pg.title && pg.title.rendered ? pg.title.rendered : "";
-        return String(t).toLowerCase().indexOf(needle) !== -1;
-      });
-    }
-
-    function pickPage(pg) {
-      var next = Object.assign({}, block.attributes.fields || {});
-      next[fieldKey] = {
-        url: fixUrl(pg.link || (pg.guid && pg.guid.rendered) || ""),
-        id: pg.id,
-        type: "page",
-        newTab: !!currObj.newTab,
-        title: (pg.title && pg.title.rendered) || "",
-      };
-      block.setAttributes({ fields: next });
-    }
-
-    function setNewTab(v) {
-      var next = Object.assign({}, block.attributes.fields || {});
-      next[fieldKey] = Object.assign({}, currObj, { newTab: !!v });
-      block.setAttributes({ fields: next });
-    }
-
-    function setManual(v) {
-      var next = Object.assign({}, block.attributes.fields || {});
-      next[fieldKey] = {
-        url: fixUrl(v || ""),
-        type: "external",
-        newTab: !!currObj.newTab,
-      };
-      block.setAttributes({ fields: next });
-    }
-
-    var list = el(
-      "div",
-      {
-        className: "now-elt-pages-list",
-        style: {
-          maxHeight: "220px",
-          overflow: "auto",
-          border: "1px solid #e2e4e7",
-          borderRadius: "6px",
-          padding: "6px",
-        },
-      },
-      pages.map(function (pg) {
-        var t = pg.title && pg.title.rendered ? pg.title.rendered : "#" + pg.id;
-        var active = currObj && currObj.id === pg.id;
-        return el(
-          "button",
-          {
-            key: pg.id,
-            type: "button",
-            onClick: function () {
-              pickPage(pg);
-            },
-            className: "button " + (active ? "is-primary" : "is-secondary"),
-            style: {
-              display: "block",
-              width: "100%",
-              textAlign: "left",
-              marginBottom: "6px",
-            },
-          },
-          String(t).replace(/<[^>]*>/g, "")
-        );
-      })
-    );
-
-    return el(
-      "div",
-      { className: "now-elt-sec-item" },
-      el("div", { className: "now-elt-label" }, labelFor(def)),
+    return Row(
+      labelFor(def),
       el(
         "div",
-        { className: "now-elt-urlpicker" },
-        el(
-          "div",
-          { style: { display: "flex", gap: "8px", marginBottom: "6px" } },
-          el("input", {
-            type: "search",
-            placeholder: __("Søg side…", "nowonline"),
-            value: search,
-            onChange: function (e) {
-              setSearch(e.target.value);
-            },
-            style: { flex: "1 1 auto" },
-          }),
-          el("input", {
-            type: "url",
-            placeholder: __("eller indsæt manuel URL…", "nowonline"),
-            value: currObj.url || "",
-            onChange: function (e) {
-              setManual(e.target.value);
-            },
-            style: { flex: "2 1 auto" },
-          })
-        ),
-        list,
-        el(
-          "div",
-          { style: { marginTop: "8px" } },
-          el(CheckboxControl, {
-            label: __("Åbn i ny fane", "nowonline"),
-            checked: !!currObj.newTab,
-            onChange: setNewTab,
-          })
-        )
-      )
+        {},
+        thumbs,
+        MediaUpload
+          ? el(MediaUpload, {
+              onSelect: onSelect,
+              allowedTypes: ["image"],
+              multiple: true,
+              gallery: true,
+              value: 0,
+              render: function (o) {
+                return el(
+                  "div",
+                  {},
+                  el(
+                    "button",
+                    { className: "button", onClick: o.open },
+                    __("Vælg billeder", "nowonline")
+                  ),
+                  el(
+                    "button",
+                    {
+                      className: "button is-secondary",
+                      onClick: clear,
+                      style: { marginLeft: 6 },
+                    },
+                    __("Ryd galleri", "nowonline")
+                  )
+                );
+              },
+            })
+          : el("div", {}, __("MediaUpload ikke tilgængelig", "nowonline"))
+      ),
+      def.key
     );
   }
 
@@ -746,16 +655,13 @@
             responsive: { type: "object", default: {} },
             spacing: { type: "object", default: {} },
 
-            // Design
             containerBg: { type: "string", default: "" },
 
-            // Knap-design
             btnTextColor: { type: "string", default: "" },
             btnBorderColor: { type: "string", default: "" },
             btnBorderWidth: { type: "string", default: "" },
             btnBorderRadius: { type: "string", default: "" },
 
-            // Background media / options
             bgVideo: { type: "string", default: "" },
             bgImg: { type: "string", default: "" },
             bgImgTablet: { type: "string", default: "" },
@@ -764,12 +670,10 @@
             bgSize: { type: "string", default: "cover" },
             bgFixed: { type: "boolean", default: false },
 
-            // --- NEW: Advanced / visibility ---
             hideDesktop: { type: "boolean", default: false },
             hideTablet: { type: "boolean", default: false },
             hideMobile: { type: "boolean", default: false },
 
-            // --- NEW: Responsive paddings ---
             padTopDesktop: { type: "string", default: "" },
             padBottomDesktop: { type: "string", default: "" },
             padTopLaptop: { type: "string", default: "" },
@@ -779,7 +683,6 @@
             padTopMobile: { type: "string", default: "" },
             padBottomMobile: { type: "string", default: "" },
 
-            // legacy
             containerTargetMode: { type: "string", default: "auto" },
             containerTarget: { type: "string", default: "" },
           },
@@ -790,13 +693,11 @@
             var fields = attrs.fields || {};
             var containerBg = attrs.containerBg || "";
 
-            // knap-attributter
             var btnTextColor = attrs.btnTextColor || "";
             var btnBorderColor = attrs.btnBorderColor || "";
             var btnBorderWidth = attrs.btnBorderWidth || "";
             var btnBorderRadius = attrs.btnBorderRadius || "";
 
-            // baggrunds-attributter
             var bgVideo = attrs.bgVideo || "";
             var bgImg = attrs.bgImg || "";
             var bgImgTablet = attrs.bgImgTablet || "";
@@ -805,7 +706,6 @@
             var bgSize = attrs.bgSize || "cover";
             var bgFixed = !!attrs.bgFixed;
 
-            // Advanced values
             var hideDesktop = !!attrs.hideDesktop;
             var hideTablet = !!attrs.hideTablet;
             var hideMobile = !!attrs.hideMobile;
@@ -819,46 +719,19 @@
             var padTopMobile = attrs.padTopMobile || "";
             var padBottomMobile = attrs.padBottomMobile || "";
 
-            // Persistente faner
             var _tab = useState("content"),
               activeTab = _tab[0],
               setActiveTab = _tab[1];
             var contentVisible = activeTab === "content";
-
-            function onPick(e) {
-              var id = parseInt(e.target.value || "0", 10) || 0;
-              props.setAttributes({ templateId: id, fields: {} });
-            }
 
             function setField(k, v) {
               var next = Object.assign({}, fields);
               next[k] = v;
               props.setAttributes({ fields: next });
             }
-
             function setAttr(next) {
               props.setAttributes(next);
             }
-
-            var picker = el(
-              "select",
-              {
-                onChange: onPick,
-                value: templateId || 0,
-                className: "now-elt-select",
-              },
-              [
-                el("option", { value: 0 }, __("Vælg template…", "nowonline")),
-              ].concat(
-                (MAP || []).map(function (x) {
-                  return el(
-                    "option",
-                    { value: x.id, key: x.id },
-                    x.title || "#" + x.id
-                  );
-                })
-              )
-            );
 
             // Feltdefinitioner
             var defs = getFieldDefs(templateId) || [];
@@ -872,105 +745,128 @@
             var galDefs = defs.filter(isGallery);
             var videoDefs = defs.filter(isVideo);
 
-            function Section(title, children) {
-              if (!children || !children.length) return null;
-              return el(
-                "div",
-                { className: "now-elt-sec" },
-                el("div", { className: "now-elt-sec-title" }, title),
-                children
-              );
+            // --- Saml KNAP (tekst + link) -----------------------------------
+            var btnTextDef = null;
+            for (var i = 0; i < textDefs.length; i++) {
+              if (isButtonTextDef(textDefs[i])) {
+                btnTextDef = textDefs[i];
+                break;
+              }
+            }
+            var btnUrlDef = urlDefs.length ? urlDefs[0] : null;
+
+            // Fjern dem fra standardlisterne
+            if (btnTextDef) {
+              textDefs = textDefs.filter(function (d) {
+                return d !== btnTextDef;
+              });
+            }
+            if (btnUrlDef) {
+              urlDefs = urlDefs.filter(function (d) {
+                return d !== btnUrlDef;
+              });
             }
 
-            // Tekster
+            // Standard tekstfelter
             var textInputs = textDefs
               .map(function (def) {
                 var value = fields[def.key] || "";
-                return el(TextareaControl, {
-                  key: def.key,
-                  label: labelFor(def),
-                  value: value,
-                  rows: 3,
-                  onChange: function (v) {
-                    setField(def.key, v);
-                  },
-                });
+                return Row(
+                  labelFor(def),
+                  el(TextareaControl, {
+                    label: undefined,
+                    value: value,
+                    rows: 3,
+                    onChange: function (v) {
+                      setField(def.key, v);
+                    },
+                  }),
+                  def.key
+                );
               })
               .concat(
                 areaDefs.map(function (def) {
                   var value = fields[def.key] || "";
-                  return el(TextareaControl, {
-                    key: def.key,
-                    label: labelFor(def),
-                    value: value,
-                    rows: 6,
-                    onChange: function (v) {
-                      setField(def.key, v);
-                    },
-                  });
+                  return Row(
+                    labelFor(def),
+                    el(TextareaControl, {
+                      label: undefined,
+                      value: value,
+                      rows: 6,
+                      onChange: function (v) {
+                        setField(def.key, v);
+                      },
+                    }),
+                    def.key
+                  );
                 })
               );
 
-            // URL inputs
+            // URL input – brug Gutenberg LinkControl hvis muligt
             function UrlInput(def) {
-              if (HAS_USESELECT)
-                return el(PagePicker, { key: def.key, block: props, def: def });
               var val = fields[def.key];
               var curr =
                 val && typeof val === "object"
                   ? val
                   : { url: val || "", newTab: false, type: "external" };
-              return el(
-                "div",
-                { key: def.key, className: "now-elt-sec-item" },
-                el("div", { className: "now-elt-label" }, labelFor(def)),
-                LinkControl
-                  ? el(LinkControl, {
-                      value: { url: curr.url || "" },
-                      onChange: function (next) {
-                        var url =
-                          typeof next === "string"
-                            ? next
-                            : (next && next.url) || "";
-                        var newTab = !!(
-                          next &&
-                          (next.opensInNewTab ||
-                            next.newTab ||
-                            next.target === "_blank")
-                        );
-                        setField(def.key, { url: fixUrl(url), newTab: newTab });
-                      },
-                      showInitialSuggestions: true,
-                      withCreateSuggestion: false,
-                    })
-                  : el(TextControl, {
-                      type: "url",
-                      value: curr.url || "",
-                      onChange: function (v) {
-                        setField(def.key, {
-                          url: fixUrl(v || ""),
-                          newTab: !!curr.newTab,
-                        });
-                      },
-                    }),
+
+              var control = LinkControl
+                ? el(LinkControl, {
+                    value: { url: curr.url || "" },
+                    onChange: function (next) {
+                      var url =
+                        typeof next === "string"
+                          ? next
+                          : (next && next.url) || "";
+                      var newTab = !!(
+                        next &&
+                        (next.opensInNewTab ||
+                          next.newTab ||
+                          next.target === "_blank")
+                      );
+                      setField(def.key, { url: fixUrl(url), newTab: newTab });
+                    },
+                    showInitialSuggestions: true,
+                    withCreateSuggestion: false,
+                  })
+                : el(TextControl, {
+                    type: "url",
+                    label: undefined,
+                    value: curr.url || "",
+                    onChange: function (v) {
+                      setField(def.key, {
+                        url: fixUrl(v || ""),
+                        newTab: !!curr.newTab,
+                      });
+                    },
+                  });
+
+              return Row(
+                labelFor(def),
                 el(
                   "div",
-                  { style: { marginTop: "6px" } },
-                  el(CheckboxControl, {
-                    label: __("Åbn i ny fane", "nowonline"),
-                    checked: !!curr.newTab,
-                    onChange: function (v) {
-                      setField(
-                        def.key,
-                        Object.assign({}, curr, { newTab: !!v })
-                      );
-                    },
-                  })
-                )
+                  {},
+                  control,
+                  el(
+                    "div",
+                    { style: { marginTop: "6px" } },
+                    el(CheckboxControl, {
+                      label: __("Åbn i ny fane", "nowonline"),
+                      checked: !!curr.newTab,
+                      onChange: function (v) {
+                        setField(
+                          def.key,
+                          Object.assign({}, curr, { newTab: !!v })
+                        );
+                      },
+                    })
+                  )
+                ),
+                def.key
               );
             }
-            var linkInputs = urlDefs.map(UrlInput);
 
+            var linkInputs = urlDefs.map(UrlInput);
             var imageInputs = imageDefs.map(function (def) {
               return ImageField(props, def);
             });
@@ -989,7 +885,6 @@
                   props.attributes.fields[fieldKey]) ||
                 "";
 
-              // inlineOnly for headings/titles so Elementor heading inherits styles
               var inlineOnly =
                 /^(titel|title|heading|overskrift|headline)$/i.test(
                   String(fieldKey || "")
@@ -1020,7 +915,6 @@
                       window.tinymce.get(idRef.current)
                     );
                   }
-
                   function sync() {
                     var raw =
                       ed && typeof ed.getContent === "function"
@@ -1032,7 +926,6 @@
                     next[fieldKey] = sanitizeRichHtml(raw, inlineOnly) || "";
                     props.setAttributes({ fields: next });
                   }
-
                   function bindWhenReady() {
                     wait = setInterval(function () {
                       if (disposed) return;
@@ -1047,7 +940,6 @@
                       }
                     }, 50);
                   }
-
                   function initIfNeeded() {
                     if (!contentVisible) return;
                     if (hasEditor()) return;
@@ -1094,15 +986,14 @@
                 ]
               );
 
-              return el(
-                "div",
-                { key: fieldKey, className: "now-elt-sec-item" },
-                el("div", { className: "now-elt-label" }, labelFor(def)),
+              return Row(
+                labelFor(def),
                 el("textarea", {
                   id: idRef.current,
                   ref: taRef,
                   defaultValue: cleanedInitial,
-                })
+                }),
+                fieldKey
               );
             }
 
@@ -1119,10 +1010,8 @@
                       fields[def.key] || "",
                       inlineOnly
                     );
-                    return el(
-                      "div",
-                      { key: def.key, className: "now-elt-sec-item" },
-                      el("div", { className: "now-elt-label" }, labelFor(def)),
+                    return Row(
+                      labelFor(def),
                       el(RichText, {
                         tagName: "div",
                         value: value,
@@ -1143,7 +1032,8 @@
                           "core/underline",
                           "core/code",
                         ],
-                      })
+                      }),
+                      def.key
                     );
                   })
                 : [
@@ -1173,33 +1063,82 @@
               );
             }
 
-            function ContentTab() {
-              var pickerRow = el(
-                "div",
-                { className: "now-elt-picker" },
-                picker
-              );
+            // Knap-sektion (samlet)
+            function ButtonSection() {
+              if (!btnTextDef && !btnUrlDef) return null;
+
+              var children = [];
+
+              if (btnTextDef) {
+                children.push(
+                  Row(
+                    __("Tekst", "nowonline"),
+                    el(TextControl, {
+                      value: fields[btnTextDef.key] || "",
+                      onChange: function (v) {
+                        setField(btnTextDef.key, v);
+                      },
+                      placeholder: __("Skriv knaptekst…", "nowonline"),
+                      __next40pxDefaultSize: true,
+                      __nextHasNoMarginBottom: true,
+                      style: { maxWidth: 320 },
+                    }),
+                    "btn-text"
+                  )
+                );
+              }
+
+              if (btnUrlDef) {
+                children.push(UrlInput(btnUrlDef));
+              }
+
               return el(
-                "div",
-                {},
-                pickerRow,
-                Section(__("Lille overskrift", "nowonline"), richInputs),
-                Section(__("Tekster", "nowonline"), textInputs),
-                Section(__("Links", "nowonline"), linkInputs),
-                Section(__("Videoer", "nowonline"), videoInputs),
-                Section(
-                  __("Billeder", "nowonline"),
-                  imageInputs.concat(galleryInputs)
-                )
+                PanelBody,
+                { title: __("Knap", "nowonline"), initialOpen: true },
+                el("div", {}, children)
               );
             }
 
+            function ContentTab() {
+              var btnSection = ButtonSection();
+
+              // Titel renderes direkte her (ingen TitleRow-funktion)
+              var titleEl = null;
+              if (templateId) {
+                var tpl = tplById(templateId) || {};
+                var title = tpl.title || "#" + (tpl.id || templateId);
+                titleEl = el(
+                  "h2",
+                  {
+                    className: "nowelt-flat-title",
+                    style: { margin: "8px 0 12px" },
+                  },
+                  title
+                );
+              }
+
+              var flatItems = []
+                .concat(btnSection ? [btnSection] : [])
+                .concat(richInputs)
+                .concat(textInputs)
+                .concat(linkInputs)
+                .concat(videoInputs)
+                .concat(imageInputs)
+                .concat(galleryInputs);
+
+              return el(
+                "div",
+                { className: "now-elt-flat" },
+                titleEl,
+                flatItems
+              );
+            }
+
+            // Design
             function DesignTab() {
               return el(
                 "div",
                 {},
-
-                // ====== Background (farve) ======
                 el(
                   PanelBody,
                   { title: __("Background", "nowonline"), initialOpen: true },
@@ -1217,7 +1156,7 @@
                     el(
                       "div",
                       { style: { minWidth: 120 } },
-                      __("Container bg", "nowonline")
+                      __("Baggrundsfarve", "nowonline")
                     ),
                     el(ColorPalette, {
                       value: containerBg || "",
@@ -1250,12 +1189,9 @@
                     )
                   )
                 ),
-
-                // ====== Button ======
                 el(
                   PanelBody,
                   { title: __("Knap", "nowonline"), initialOpen: false },
-                  // Tekstfarve
                   el(
                     "div",
                     {
@@ -1289,7 +1225,6 @@
                       style: { minWidth: 260 },
                     })
                   ),
-                  // Borderfarve
                   el(
                     "div",
                     {
@@ -1323,7 +1258,6 @@
                       style: { minWidth: 260 },
                     })
                   ),
-                  // Border bredde
                   el(TextControl, {
                     label: __("Border bredde", "nowonline"),
                     value: btnBorderWidth || "",
@@ -1337,7 +1271,6 @@
                     __next40pxDefaultSize: true,
                     __nextHasNoMarginBottom: true,
                   }),
-                  // Border radius
                   el(TextControl, {
                     label: __("Border radius", "nowonline"),
                     value: btnBorderRadius || "",
@@ -1348,7 +1281,6 @@
                     __next40pxDefaultSize: true,
                     __nextHasNoMarginBottom: true,
                   }),
-                  // Reset
                   el(
                     "div",
                     { style: { marginTop: 8 } },
@@ -1365,14 +1297,14 @@
                           });
                         },
                       },
-                      __("Nulstil knap-stil", "nowonline")
+                      __("Nulstil knap", "nowonline")
                     )
                   )
                 )
               );
             }
 
-            // ====== Baggrunds-fanen ======
+            // Baggrund
             function BackgroundTab() {
               var posOpts = [
                 "center center",
@@ -1389,71 +1321,72 @@
 
               function ImgPicker(label, key) {
                 var url = props.attributes[key] || "";
-
                 function onSelect(media) {
-                  setAttr({
-                    [key]: (media && media.url) || "",
-                  });
+                  var obj = {};
+                  obj[key] = (media && media.url) || "";
+                  setAttr(obj);
                 }
-
                 function clear() {
-                  setAttr({
-                    [key]: "",
-                  });
+                  var obj = {};
+                  obj[key] = "";
+                  setAttr(obj);
                 }
                 return el(
                   "div",
                   { className: "now-elt-sec-item" },
                   el("div", { className: "now-elt-label" }, label),
-                  url
-                    ? el("img", {
-                        src: url,
-                        alt: "",
-                        className: "now-elt-imgprev",
-                        style: {
-                          maxWidth: 260,
-                          display: "block",
-                          marginBottom: 6,
-                        },
-                      })
-                    : el(
-                        "div",
-                        { className: "now-elt-imgprev now-elt-noimg" },
-                        __("No image selected", "nowonline")
-                      ),
-                  MediaUpload
-                    ? el(MediaUpload, {
-                        onSelect: onSelect,
-                        value: 0,
-                        allowedTypes: ["image"],
-                        render: function (o) {
-                          return el(
-                            "div",
-                            {},
-                            el(
-                              "button",
-                              { className: "button", onClick: o.open },
-                              __("Add Image", "nowonline")
-                            ),
-                            el(
-                              "button",
-                              {
-                                className: "button is-secondary",
-                                onClick: clear,
-                                style: { marginLeft: 6 },
-                              },
-                              __("Clear", "nowonline")
-                            )
-                          );
-                        },
-                      })
-                    : null
+                  el(
+                    "div",
+                    { className: "now-elt-field" },
+                    url
+                      ? el("img", {
+                          src: url,
+                          alt: "",
+                          className: "now-elt-imgprev",
+                          style: {
+                            maxWidth: 260,
+                            display: "block",
+                            marginBottom: 6,
+                          },
+                        })
+                      : el(
+                          "div",
+                          { className: "now-elt-imgprev now-elt-noimg" },
+                          __("No image selected", "nowonline")
+                        ),
+                    MediaUpload
+                      ? el(MediaUpload, {
+                          onSelect: onSelect,
+                          value: 0,
+                          allowedTypes: ["image"],
+                          render: function (o) {
+                            return el(
+                              "div",
+                              {},
+                              el(
+                                "button",
+                                { className: "button", onClick: o.open },
+                                __("Add Image", "nowonline")
+                              ),
+                              el(
+                                "button",
+                                {
+                                  className: "button is-secondary",
+                                  onClick: clear,
+                                  style: { marginLeft: 6 },
+                                },
+                                __("Clear", "nowonline")
+                              )
+                            );
+                          },
+                        })
+                      : null
+                  )
                 );
               }
 
               function VideoPicker() {
                 var url = props.attributes.bgVideo || "";
-
                 function onSelect(media) {
                   setAttr({ bgVideo: (media && media.url) || "" });
                 }
@@ -1463,88 +1396,89 @@
                   el(
                     "div",
                     { className: "now-elt-label" },
-                    __("Background video", "nowonline")
+                    __("baggrunds video", "nowonline")
                   ),
-                  url
-                    ? el("video", {
-                        src: url,
-                        controls: true,
-                        style: {
-                          width: "100%",
-                          maxWidth: 520,
-                          display: "block",
-                          marginBottom: 6,
-                        },
-                      })
-                    : el(
-                        "div",
-                        { className: "now-elt-imgprev now-elt-noimg" },
-                        __("No video selected", "nowonline")
-                      ),
-                  MediaUpload
-                    ? el(MediaUpload, {
-                        onSelect: onSelect,
-                        value: 0,
-                        allowedTypes: ["video"],
-                        render: function (o) {
-                          return el(
-                            "div",
-                            {},
-                            el(
-                              "button",
-                              { className: "button", onClick: o.open },
-                              __("Choose video", "nowonline")
-                            ),
-                            el(
-                              "button",
-                              {
-                                className: "button is-secondary",
-                                onClick: function () {
-                                  setAttr({ bgVideo: "" });
-                                },
-                                style: { marginLeft: 6 },
-                              },
-                              __("Remove", "nowonline")
-                            ),
-                            el(TextControl, {
-                              value: url || "",
-                              onChange: function (v) {
-                                setAttr({ bgVideo: (v || "").trim() });
-                              },
-                              placeholder: __(
-                                "or paste video URL…",
-                                "nowonline"
+                  el(
+                    "div",
+                    { className: "now-elt-field" },
+                    url
+                      ? el("video", {
+                          src: url,
+                          controls: true,
+                          style: {
+                            width: "100%",
+                            maxWidth: 520,
+                            display: "block",
+                            marginBottom: 6,
+                          },
+                        })
+                      : el(
+                          "div",
+                          { className: "now-elt-imgprev now-elt-noimg" },
+                          __("No video selected", "nowonline")
+                        ),
+                    MediaUpload
+                      ? el(MediaUpload, {
+                          onSelect: onSelect,
+                          value: 0,
+                          allowedTypes: ["video"],
+                          render: function (o) {
+                            return el(
+                              "div",
+                              {},
+                              el(
+                                "button",
+                                { className: "button", onClick: o.open },
+                                __("Choose video", "nowonline")
                               ),
-                              style: { marginTop: 8, minWidth: 280 },
-                            })
-                          );
-                        },
-                      })
-                    : null
+                              el(
+                                "button",
+                                {
+                                  className: "button is-secondary",
+                                  onClick: function () {
+                                    setAttr({ bgVideo: "" });
+                                  },
+                                  style: { marginLeft: 6 },
+                                },
+                                __("Remove", "nowonline")
+                              ),
+                              el(TextControl, {
+                                value: url || "",
+                                onChange: function (v) {
+                                  setAttr({ bgVideo: (v || "").trim() });
+                                },
+                                placeholder: __(
+                                  "or paste video URL…",
+                                  "nowonline"
+                                ),
+                                style: { marginTop: 8, minWidth: 280 },
+                              })
+                            );
+                          },
+                        })
+                      : null
+                  )
                 );
               }
 
               return el(
                 "div",
                 {},
-                // Video
                 el(
                   PanelBody,
                   {
-                    title: __("Background video", "nowonline"),
+                    title: __("baggrunds video", "nowonline"),
                     initialOpen: true,
                   },
                   VideoPicker()
                 ),
-
-                // Desktop image + options
                 el(
                   PanelBody,
                   {
-                    title: __("Background image", "nowonline"),
+                    title: __("Baggrundsbillede", "nowonline"),
                     initialOpen: true,
                   },
-                  ImgPicker(__("Background image", "nowonline"), "bgImg"),
+                  ImgPicker(__("Baggrundsbillede", "nowonline"), "bgImg"),
                   el(
                     "div",
                     {
@@ -1556,7 +1490,6 @@
                         marginTop: 8,
                       },
                     },
-                    // Position
                     el(
                       "div",
                       {},
@@ -1573,12 +1506,21 @@
                             setAttr({ bgPos: e.target.value });
                           },
                         },
-                        posOpts.map(function (p) {
+                        [
+                          "center center",
+                          "top center",
+                          "bottom center",
+                          "center left",
+                          "center right",
+                          "top left",
+                          "top right",
+                          "bottom left",
+                          "bottom right",
+                        ].map(function (p) {
                           return el("option", { key: p, value: p }, p);
                         })
                       )
                     ),
-                    // Size
                     el(
                       "div",
                       {},
@@ -1595,12 +1537,11 @@
                             setAttr({ bgSize: e.target.value });
                           },
                         },
-                        sizeOpts.map(function (s) {
+                        ["cover", "contain", "auto"].map(function (s) {
                           return el("option", { key: s, value: s }, s);
                         })
                       )
                     ),
-                    // Fixed
                     el(
                       "div",
                       {},
@@ -1621,45 +1562,26 @@
                     )
                   )
                 ),
-
-                // Tablet
                 el(
                   PanelBody,
                   {
-                    title: __("Background image tablet", "nowonline"),
+                    title: __("Baggrundsbilledetablet", "nowonline"),
                     initialOpen: false,
                   },
                   ImgPicker(__("Tablet background", "nowonline"), "bgImgTablet")
                 ),
-
-                // Mobile
                 el(
                   PanelBody,
                   {
-                    title: __("Background image mobile", "nowonline"),
+                    title: __("Baggrundsbillede telefon", "nowonline"),
                     initialOpen: false,
                   },
                   ImgPicker(__("Mobile background", "nowonline"), "bgImgMobile")
-                ),
-
-                el(
-                  "div",
-                  { className: "now-elt-muted", style: { marginTop: 8 } },
-                  __(
-                    "Anvendes på container markeret i Elementor som ",
-                    "nowonline"
-                  ),
-                  el(
-                    "code",
-                    {},
-                    "[data-nowonline-bg], .nowonline-bg, [data-now-bg], .now-bg"
-                  ),
-                  "."
                 )
               );
             }
 
-            // ====== NEW: Advanced fanen (visibility + responsive spacing) ====
+            // Advanced
             function AdvancedTab() {
               function unitHelp() {
                 return __(
@@ -1667,7 +1589,6 @@
                   "nowonline"
                 );
               }
-
               function RowTwo(aLabel, aKey, aVal, bLabel, bKey, bVal) {
                 return el(
                   "div",
@@ -1683,9 +1604,9 @@
                     label: aLabel,
                     value: aVal || "",
                     onChange: function (v) {
-                      var next = {};
-                      next[aKey] = (v || "").trim();
-                      setAttr(next);
+                      var n = {};
+                      n[aKey] = (v || "").trim();
+                      setAttr(n);
                     },
                     placeholder: "fx 80px",
                     help: unitHelp(),
@@ -1694,57 +1615,54 @@
                     label: bLabel,
                     value: bVal || "",
                     onChange: function (v) {
-                      var next = {};
-                      next[bKey] = (v || "").trim();
-                      setAttr(next);
+                      var n = {};
+                      n[bKey] = (v || "").trim();
+                      setAttr(n);
                     },
                     placeholder: "fx 80px",
                     help: unitHelp(),
                   })
                 );
               }
-
               function ResetBtn(keys) {
                 return el(
                   Button,
                   {
                     className: "button is-secondary",
                     onClick: function () {
-                      var next = {};
+                      var n = {};
                       keys.forEach(function (k) {
-                        next[k] = "";
+                        n[k] = "";
                       });
-                      setAttr(next);
+                      setAttr(n);
                     },
                     style: { marginTop: 4 },
                   },
                   __("Nulstil", "nowonline")
                 );
               }
-
               return el(
                 "div",
                 {},
-                // Visibility
                 el(
                   PanelBody,
                   { title: __("Visibility", "nowonline"), initialOpen: true },
                   el(CheckboxControl, {
-                    label: __("Hide on Desktop", "nowonline"),
+                    label: __("Skjul på computer", "nowonline"),
                     checked: !!hideDesktop,
                     onChange: function (v) {
                       setAttr({ hideDesktop: !!v });
                     },
                   }),
                   el(CheckboxControl, {
-                    label: __("Hide on Tablet", "nowonline"),
+                    label: __("Skjul på tablet", "nowonline"),
                     checked: !!hideTablet,
                     onChange: function (v) {
                       setAttr({ hideTablet: !!v });
                     },
                   }),
                   el(CheckboxControl, {
-                    label: __("Hide on Mobile", "nowonline"),
+                    label: __("Skjul på telefon", "nowonline"),
                     checked: !!hideMobile,
                     onChange: function (v) {
                       setAttr({ hideMobile: !!v });
@@ -1759,14 +1677,9 @@
                     )
                   )
                 ),
-
-                // Spacing – Desktop
                 el(
                   PanelBody,
-                  {
-                    title: __("Spacing – Desktop", "nowonline"),
-                    initialOpen: true,
-                  },
+                  { title: __("Computer", "nowonline"), initialOpen: true },
                   RowTwo(
                     __("Padding top (desktop)", "nowonline"),
                     "padTopDesktop",
@@ -1777,14 +1690,9 @@
                   ),
                   ResetBtn(["padTopDesktop", "padBottomDesktop"])
                 ),
-
-                // Spacing – Laptop
                 el(
                   PanelBody,
-                  {
-                    title: __("Spacing – Laptop (≤1440px)", "nowonline"),
-                    initialOpen: false,
-                  },
+                  { title: __("Bærbar", "nowonline"), initialOpen: false },
                   RowTwo(
                     __("Padding top (laptop)", "nowonline"),
                     "padTopLaptop",
@@ -1795,14 +1703,9 @@
                   ),
                   ResetBtn(["padTopLaptop", "padBottomLaptop"])
                 ),
-
-                // Spacing – Tablet
                 el(
                   PanelBody,
-                  {
-                    title: __("Spacing – Tablet (≤1024px)", "nowonline"),
-                    initialOpen: false,
-                  },
+                  { title: __("Tablet", "nowonline"), initialOpen: false },
                   RowTwo(
                     __("Padding top (tablet)", "nowonline"),
                     "padTopTablet",
@@ -1813,14 +1716,9 @@
                   ),
                   ResetBtn(["padTopTablet", "padBottomTablet"])
                 ),
-
-                // Spacing – Mobile
                 el(
                   PanelBody,
-                  {
-                    title: __("Spacing – Mobile (≤767px)", "nowonline"),
-                    initialOpen: false,
-                  },
+                  { title: __("Telefon", "nowonline"), initialOpen: false },
                   RowTwo(
                     __("Padding top (mobile)", "nowonline"),
                     "padTopMobile",
@@ -1830,15 +1728,6 @@
                     padBottomMobile
                   ),
                   ResetBtn(["padTopMobile", "padBottomMobile"])
-                ),
-
-                el(
-                  "div",
-                  { className: "now-elt-muted", style: { marginTop: 8 } },
-                  __(
-                    "Tip: Brug enheder som px, rem, vh, % osv. Tomt felt = ingen override.",
-                    "nowonline"
-                  )
                 )
               );
             }
@@ -1939,7 +1828,7 @@
         });
       }
 
-      // Variationer
+      // Variationer (templateId sættes ved indsætning)
       if (
         Blocks &&
         typeof Blocks.registerBlockVariation === "function" &&
@@ -1973,48 +1862,4 @@
         console.warn("[NowOnline Elementor Blocks] init error", e);
     }
   });
-})();
-
-// File: assets/frontend.js
-(function () {
-  "use strict";
-
-  function pickTarget(root) {
-    if (!root) return null;
-    var sel = [
-      "[data-now-bg]",
-      ".now-bg",
-      "[data-nowonline-bg]",
-      ".nowonline-bg",
-    ];
-    for (var i = 0; i < sel.length; i++) {
-      var el = root.querySelector(sel[i]);
-      if (el) return el;
-    }
-    return null;
-  }
-
-  function applyBgColor(root, color) {
-    var target = pickTarget(root) || root;
-    if (!color) {
-      target.style.removeProperty("background-color");
-      return;
-    }
-    target.style.setProperty("background-color", color, "important");
-  }
-
-  function boot() {
-    var roots = document.querySelectorAll(
-      ".now-elt-frontend-root[data-now-bg-value]"
-    );
-    for (var i = 0; i < roots.length; i++) {
-      var r = roots[i];
-      var color = r.getAttribute("data-now-bg-value") || "";
-      if (color) applyBgColor(r, color);
-    }
-  }
-
-  if (document.readyState === "loading")
-    document.addEventListener("DOMContentLoaded", boot);
-  else boot();
 })();
