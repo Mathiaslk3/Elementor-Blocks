@@ -118,14 +118,14 @@ final class TemplatesRepo
 
                 // Label baseret på NORMALISERET type
                 $label = ucwords(str_replace(['_','-'], ' ', $key));
-                if     ($type === 'p')                   { $label .= ' (P)'; }
+                if     ($type === 'p')                   { $label .= ''; }
                 elseif (preg_match('/^h[1-6]$/', $type)) { $label .= ' (' . strtoupper($type) . ')'; }
-                elseif ($type === 'img')                 { $label .= ' (Image)'; }
-                elseif ($type === 'bg')                  { $label .= ' (Background)'; }
-                elseif ($type === 'url')                 { $label .= ' (URL)'; }
-                elseif ($type === 'textarea')            { $label .= ' (Textarea)'; }
-                elseif ($type === 'rich')                { $label .= ' (Rich)'; }
-                else                                     { $label .= ' (Text)'; }
+                elseif ($type === 'img')                 { $label .= ''; }
+                elseif ($type === 'bg')                  { $label .= ''; }
+                elseif ($type === 'url')                 { $label .= ''; }
+                elseif ($type === 'textarea')            { $label .= ''; }
+                elseif ($type === 'rich')                { $label .= ''; }
+                else                                     { $label .= ''; }
 
                 $list[] = [
                     'key'   => $key,
