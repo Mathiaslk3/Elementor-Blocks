@@ -5,7 +5,7 @@ if (!defined('ABSPATH')) { exit; }
 
 final class Plugin
 {
-    public const VER = '2.13.6';
+    public const VER = '2.13.7';
     private static ?Plugin $instance = null;
 
     /** @var array<class-string,object> */
@@ -29,6 +29,8 @@ final class Plugin
         // Admin
         $this->get(\NowOnline\EltBlocks\Admin\SettingsPage::class)->register();
         $this->get(\NowOnline\EltBlocks\Admin\Ajax::class)->register();
+        // NEW: Modern editor UI
+        $this->get(\NowOnline\EltBlocks\Admin\AdminUI::class)->register();
 
         // Assets
         $this->get(\NowOnline\EltBlocks\Assets\Assets::class)->register(self::VER);
@@ -47,29 +49,41 @@ final class Plugin
             case \NowOnline\EltBlocks\Repository\TemplatesRepo::class:
                 $this->services[$class] = new \NowOnline\EltBlocks\Repository\TemplatesRepo();
                 break;
+
             case \NowOnline\EltBlocks\Services\PlaceholderScanner::class:
                 $this->services[$class] = new \NowOnline\EltBlocks\Services\PlaceholderScanner();
                 break;
+
             case \NowOnline\EltBlocks\Assets\Assets::class:
                 $this->services[$class] = new \NowOnline\EltBlocks\Assets\Assets(
                     $this->get(\NowOnline\EltBlocks\Repository\TemplatesRepo::class),
                     $this->get(\NowOnline\EltBlocks\Services\PlaceholderScanner::class)
                 );
                 break;
+
             case \NowOnline\EltBlocks\Rendering\Renderer::class:
                 $this->services[$class] = new \NowOnline\EltBlocks\Rendering\Renderer(
                     $this->get(\NowOnline\EltBlocks\Services\PlaceholderScanner::class)
                 );
                 break;
+
             case \NowOnline\EltBlocks\Blocks\TemplateBlock::class:
                 $this->services[$class] = new \NowOnline\EltBlocks\Blocks\TemplateBlock();
                 break;
+
             case \NowOnline\EltBlocks\Admin\SettingsPage::class:
                 $this->services[$class] = new \NowOnline\EltBlocks\Admin\SettingsPage();
                 break;
+
             case \NowOnline\EltBlocks\Admin\Ajax::class:
                 $this->services[$class] = new \NowOnline\EltBlocks\Admin\Ajax();
                 break;
+
+            // NEW: Admin UI service
+            case \NowOnline\EltBlocks\Admin\AdminUI::class:
+                $this->services[$class] = new \NowOnline\EltBlocks\Admin\AdminUI();
+                break;
+
             default:
                 $this->services[$class] = new $class();
         }

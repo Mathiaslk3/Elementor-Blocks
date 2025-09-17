@@ -26,89 +26,87 @@ final class Renderer
         add_action('wp_footer', [$this, 'inject_header_body_class']);
     }
 
-    public function frontend_css(): void
-    {
-        $sel = apply_filters('nowonline_elt_header_hide_selectors', [
-            'header[role="banner"]','.elementor-location-header','#masthead','.site-header',
-            'header.site-header','header.header','.ast-desktop-header','.ast-mobile-header-wrap',
-            '.oceanwp-header','.main-header','.header-main','.gen-header','#header'
-        ]);
-        $prefA = array_map(static fn($s) => 'body.nowelt-replace-header ' . $s, $sel);
-        $prefB = array_map(static fn($s) => 'html.nowelt-replace-header ' . $s, $sel);
-        $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
+public function frontend_css(): void
+{
+    $sel = apply_filters('nowonline_elt_header_hide_selectors', [
+        'header[role="banner"]','.elementor-location-header','#masthead','.site-header',
+        'header.site-header','header.header','.ast-desktop-header','.ast-mobile-header-wrap',
+        '.oceanwp-header','.main-header','.header-main','.gen-header','#header'
+    ]);
+    $prefA = array_map(static fn($s) => 'body.nowelt-replace-header ' . $s, $sel);
+    $prefB = array_map(static fn($s) => 'html.nowelt-replace-header ' . $s, $sel);
+    $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
 
-        $targets = '.nowonline-elt-wrapper [data-now-bg],.nowonline-elt-wrapper .now-bg,'
-                 . '.nowonline-elt-wrapper [data-nowonline-bg],.nowonline-elt-wrapper .nowonline-bg';
-        $overlayTargets = $targets . '>.elementor-background-overlay,' . $targets . ' .elementor-background-overlay';
+    $targets = '.nowonline-elt-wrapper [data-now-bg],.nowonline-elt-wrapper .now-bg,'
+             . '.nowonline-elt-wrapper [data-nowonline-bg],.nowonline-elt-wrapper .nowonline-bg';
+    $overlayTargets = $targets . '>.elementor-background-overlay,' . $targets . ' .elementor-background-overlay';
 
-        // Kun hvis wrapperen faktisk har mindst én --now-btn-* variabel sat
-        $btnScope = '.nowonline-elt-wrapper[style*="--now-btn-"] .nowonline-elt-module';
+    // Kun hvis wrapperen faktisk har mindst én --now-btn-* variabel sat
+    $btnScope = '.nowonline-elt-wrapper[style*="--now-btn-"] .nowonline-elt-module';
 
-        // Begræns til <a> (Elementor-knapper er typisk <a>) + dine now-link-varianter
-        $btnSel = $btnScope . ' a[data-now-key],'
-                . $btnScope . ' a[class*="now-link-"],'
-                . $btnScope . ' a[id^="now-link-"],'
-                . $btnScope . ' a.elementor-button,'
-                . $btnScope . ' a.elementor-button-link';
+    // Begræns til <a> (Elementor-knapper er typisk <a>) + dine now-link-varianter
+    $btnSel = $btnScope . ' a[data-now-key],'
+            . $btnScope . ' a[class*="now-link-"],'
+            . $btnScope . ' a[id^="now-link-"],'
+            . $btnScope . ' a.elementor-button,'
+            . $btnScope . ' a.elementor-button-link';
 
-        // Font-size mapping via CSS-variabler (virker kun hvor variablen er sat – ellers fallback til template)
-        $fsBase = '.nowonline-elt-wrapper .nowonline-elt-module';
-        $fsCss  =
-            $fsBase . ' h1,' . $fsBase . ' .elementor-widget-heading h1.elementor-heading-title{font-size:var(--now-fs-h1)!important;}' .
-            $fsBase . ' h2,' . $fsBase . ' .elementor-widget-heading h2.elementor-heading-title{font-size:var(--now-fs-h2)!important;}' .
-            $fsBase . ' h3,' . $fsBase . ' .elementor-widget-heading h3.elementor-heading-title{font-size:var(--now-fs-h3)!important;}' .
-            $fsBase . ' h4,' . $fsBase . ' .elementor-widget-heading h4.elementor-heading-title{font-size:var(--now-fs-h4)!important;}' .
-            $fsBase . ' h5,' . $fsBase . ' .elementor-widget-heading h5.elementor-heading-title{font-size:var(--now-fs-h5)!important;}' .
-            $fsBase . ' h6,' . $fsBase . ' .elementor-widget-heading h6.elementor-heading-title{font-size:var(--now-fs-h6)!important;}' .
-            $fsBase . ' p,'  . $fsBase . ' .elementor-widget-text-editor,' . $fsBase . ' .elementor-widget-text-editor p{font-size:var(--now-fs-body)!important;}' .
-            $fsBase . ' a.elementor-button,' . $fsBase . ' .elementor-button{font-size:var(--now-fs-btn)!important;}';
+    // Var-baseret font-size mapping – vi lader dem kun gælde på desktop
+    $fsBase = '.nowonline-elt-wrapper .nowonline-elt-module';
+    $fsCss  =
+        $fsBase . ' h1,' . $fsBase . ' .elementor-widget-heading h1.elementor-heading-title{font-size:var(--now-fs-h1)!important;}'
+      . $fsBase . ' h2,' . $fsBase . ' .elementor-widget-heading h2.elementor-heading-title{font-size:var(--now-fs-h2)!important;}'
+      . $fsBase . ' h3,' . $fsBase . ' .elementor-widget-heading h3.elementor-heading-title{font-size:var(--now-fs-h3)!important;}'
+      . $fsBase . ' h4,' . $fsBase . ' .elementor-widget-heading h4.elementor-heading-title{font-size:var(--now-fs-h4)!important;}'
+      . $fsBase . ' h5,' . $fsBase . ' .elementor-widget-heading h5.elementor-heading-title{font-size:var(--now-fs-h5)!important;}'
+      . $fsBase . ' h6,' . $fsBase . ' .elementor-widget-heading h6.elementor-heading-title{font-size:var(--now-fs-h6)!important;}'
+      . $fsBase . ' p,'  . $fsBase . ' .elementor-widget-text-editor,' . $fsBase . ' .elementor-widget-text-editor p{font-size:var(--now-fs-body)!important;}'
+      . $fsBase . ' a.elementor-button,' . $fsBase . ' .elementor-button{font-size:var(--now-fs-btn)!important;}';
 
-        // NULSTIL inline font-size på descendants, så H/P bestemmer (template på mobil, vars på desktop)
-        $inlineTargets = implode(',', [
-            $fsBase . ' .elementor-heading-title [style*="font-size"]',
-            $fsBase . ' h1 [style*="font-size"]',
-            $fsBase . ' h2 [style*="font-size"]',
-            $fsBase . ' h3 [style*="font-size"]',
-            $fsBase . ' h4 [style*="font-size"]',
-            $fsBase . ' h5 [style*="font-size"]',
-            $fsBase . ' h6 [style*="font-size"]',
-            $fsBase . ' p [style*="font-size"]',
-            $fsBase . ' .elementor-widget-text-editor [style*="font-size"]'
-        ]);
-        $inlineResetCss =
-            '@media (max-width:1024px){' . $inlineTargets . '{font-size:inherit!important;}}' .
-            '@media (min-width:1025px){' . $inlineTargets . '{font-size:inherit!important;}}';
+    // **NYT**: neutraliser inline font-size i overskrifter KUN på tablet/mobil
+    $killInlineSel = implode(',', [
+        $fsBase.' .elementor-heading-title[style*="font-size"]',
+        $fsBase.' .elementor-heading-title [style*="font-size"]',
+        $fsBase.' h1[style*="font-size"]', $fsBase.' h1 [style*="font-size"]',
+        $fsBase.' h2[style*="font-size"]', $fsBase.' h2 [style*="font-size"]',
+        $fsBase.' h3[style*="font-size"]', $fsBase.' h3 [style*="font-size"]',
+        $fsBase.' h4[style*="font-size"]', $fsBase.' h4 [style*="font-size"]',
+        $fsBase.' h5[style*="font-size"]', $fsBase.' h5 [style*="font-size"]',
+        $fsBase.' h6[style*="font-size"]', $fsBase.' h6 [style*="font-size"]'
+    ]);
+    $killInlineCss = '@media (max-width:1024px){'.$killInlineSel.'{font-size:inherit!important;line-height:inherit!important;}}';
 
-        echo '<style>'
-            . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
-            . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
-            // VIGTIGT: kun background-color (ellers nulstilles background-image)
-            . $targets . '{background-color:var(--now-bg-color)!important;}'
-            . $overlayTargets . '{background-color:var(--now-bg-color)!important;}'
+    echo '<style>'
+        . '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}'
+        . '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}'
+        // VIGTIGT: kun background-color (ellers nulstilles background-image)
+        . $targets . '{background-color:var(--now-bg-color)!important;}'
+        . $overlayTargets . '{background-color:var(--now-bg-color)!important;}'
 
-            // Knap-variabler – ingen tvungen border-style (template arver som default)
-            . $btnSel . '{'
-                . 'color:var(--now-btn-color)!important;'
-                . 'border-color:var(--now-btn-bdc)!important;'
-                . 'border-width:var(--now-btn-bdw)!important;'
-                . 'border-radius:var(--now-btn-rad)!important;'
-            . '}'
-            . $btnSel . ':hover,' . $btnSel . ':focus{'
-                . 'color:var(--now-btn-color)!important;'
-                . 'border-color:var(--now-btn-bdc)!important;'
-            . '}'
+        // Knap-variabler – ingen tvungen border-style (template arver som default)
+        . $btnSel . '{'
+            . 'color:var(--now-btn-color)!important;'
+            . 'border-color:var(--now-btn-bdc)!important;'
+            . 'border-width:var(--now-btn-bdw)!important;'
+            . 'border-radius:var(--now-btn-rad)!important;'
+        . '}'
+        . $btnSel . ':hover,' . $btnSel . ':focus{'
+            . 'color:var(--now-btn-color)!important;'
+            . 'border-color:var(--now-btn-bdc)!important;'
+        . '}'
 
-            // Font-size var mapping – KUN PÅ DESKTOP (≥1025px)
-            . '@media (min-width:1025px){' . $fsCss . '}'
+        // Var-mapping KUN på desktop (≥1025px)
+        . '@media (min-width:1025px){' . $fsCss . '}'
 
-            // Nulstil inline font-size på både mobil og desktop
-            . $inlineResetCss
+        // Nulstil inline font-size KUN på tablet/mobil
+        . $killInlineCss
 
-            . '.nowonline-elt-wrapper .nowelt-has-bgvid{position:relative;overflow:hidden;}'
-            . '.nowonline-elt-wrapper .nowelt-bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;}'
-            . $hideCss
-            . '</style>';
-    }
+        . '.nowonline-elt-wrapper .nowelt-has-bgvid{position:relative;overflow:hidden;}'
+        . '.nowonline-elt-wrapper .nowelt-bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;}'
+        . $hideCss
+        . '</style>';
+}
+
 
     private static function fix_url(string $u): string
     {
