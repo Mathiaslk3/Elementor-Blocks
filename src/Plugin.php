@@ -5,7 +5,7 @@ if (!defined('ABSPATH')) { exit; }
 
 final class Plugin
 {
-    public const VER = '2.13.7';
+    public const VER = '2.13.9';
     private static ?Plugin $instance = null;
 
     /** @var array<class-string,object> */
