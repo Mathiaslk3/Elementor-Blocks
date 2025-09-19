@@ -122,9 +122,26 @@
     );
   }
 
+  // --- HTML entity decode (fixer &#8211; → – osv.) --------------------------
+  function decodeEntities(input) {
+    if (typeof input !== "string" || !input) return input;
+    var doc = new DOMParser().parseFromString(
+      "<!doctype html><body>" + input,
+      "text/html"
+    );
+    return (doc && doc.body && doc.body.textContent) || "";
+  }
+
   function getFieldDefs(id) {
     var M = window.NOWONLINE_FIELDS || {};
-    return (M && M[id]) || [];
+    var arr = (M && M[id]) || [];
+    if (!Array.isArray(arr)) return [];
+    // Dekodér labels inden brug i UI
+    return arr.map(function (d) {
+      var copy = Object.assign({}, d);
+      if (copy.label) copy.label = decodeEntities(copy.label);
+      return copy;
+    });
   }
 
   // strip “(Rich) / (Text) / (Textarea) / (WYSIWYG)” i labels
@@ -166,7 +183,9 @@
   }
 
   function tplById(id) {
-    var list = Array.isArray(window.NOWONLINE_TEMPLATES)
+    var list = Array.isArray(window.NOWONLINE_TEMPLATES_DECODED)
+      ? window.NOWONLINE_TEMPLATES_DECODED
+      : Array.isArray(window.NOWONLINE_TEMPLATES)
       ? window.NOWONLINE_TEMPLATES
       : [];
     id = parseInt(id || 0, 10);
@@ -634,9 +653,18 @@
   // --- Blok-registrering -----------------------------------------------------
   domReady(function () {
     try {
-      var MAP = Array.isArray(window.NOWONLINE_TEMPLATES)
+      var RAW_MAP = Array.isArray(window.NOWONLINE_TEMPLATES)
         ? window.NOWONLINE_TEMPLATES
         : [];
+
+      // Dekod alle titler og eksponér globalt
+      var MAP = RAW_MAP.map(function (t) {
+        var copy = Object.assign({}, t);
+        copy.title = decodeEntities(t.title || "");
+        return copy;
+      });
+      window.NOWONLINE_TEMPLATES_DECODED = MAP;
+
       if (!Blocks || !Blocks.registerBlockType) return;
 
       var already =
@@ -1102,7 +1130,7 @@
             function ContentTab() {
               var btnSection = ButtonSection();
 
-              // Titel renderes direkte her (ingen TitleRow-funktion)
+              // Titel (nu dekodet via tplById → MAP_DECODED)
               var titleEl = null;
               if (templateId) {
                 var tpl = tplById(templateId) || {};
@@ -1828,7 +1856,7 @@
         });
       }
 
-      // Variationer (templateId sættes ved indsætning)
+      // Variationer (templateId sættes ved indsætning) – brug dekodede titler
       if (
         Blocks &&
         typeof Blocks.registerBlockVariation === "function" &&
@@ -1846,7 +1874,7 @@
             : Icon();
           Blocks.registerBlockVariation("nowonline/elt-template", {
             name: "nowonline-elt-" + t.id,
-            title: t.title || "#" + t.id,
+            title: t.title || "#" + t.id, // dekodet
             description: __("Elementor template", "nowonline"),
             icon: icon,
             attributes: { templateId: t.id },
@@ -1862,4 +1890,9 @@
         console.warn("[NowOnline Elementor Blocks] init error", e);
     }
   });
+
+  // Valgfri test-export (har ingen effekt i WP)
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = { decodeEntities };
+  }
 })();
