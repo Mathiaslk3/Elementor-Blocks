@@ -134,6 +134,138 @@
   height: 140px;
 }
 
+/* ========= Inserter: variation-ikon & stort preview ====================== */
+
+/* Lille ikon i inserter-listen (forhindrer drag/klik på billedet) */
+.now-elt-var-thumb {
+  display: block;
+  width: 48px;
+  height: 36px;
+  background-size: cover;
+  background-position: center;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+  pointer-events: none; /* undgå at Media/Image-blokken aktiveres ved drag */
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Stort preview-område i højre panel */
+.now-elt-inserter-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 180px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+}
+.now-elt-inserter-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: cover;
+  pointer-events: none; /* undgå utilsigtede events/drag */
+  user-select: none;
+}
+.now-elt-inserter-preview__empty {
+  opacity: 0.6;
+  font-size: 12px;
+}
+
+/* ========= Nye util/preview/inserter klasser (brugt i editor.js) ========= */
+
+/* Tabbar spacing */
+.now-elt-tabbar {
+  margin: 10px 0;
+}
+
+/* Spacing utils */
+.now-elt-mt-4 {
+  margin-top: 4px;
+}
+.now-elt-mt-6 {
+  margin-top: 6px;
+}
+.now-elt-mt-8 {
+  margin-top: 8px;
+}
+.now-elt-mt-10 {
+  margin-top: 10px;
+}
+
+/* Button-rækker: mellemrum mellem knapper */
+.now-elt-btnrow .button + .button {
+  margin-left: 6px;
+}
+
+/* Input-bredder */
+.now-elt-input-narrow {
+  max-width: 320px;
+}
+.now-elt-input-wide {
+  min-width: 260px;
+}
+
+/* Grid helpers */
+.now-elt-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.now-elt-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+/* Flex-række til design-felter */
+.now-elt-row-flex {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.now-elt-row-label {
+  min-width: 120px;
+}
+
+/* Canvas preview billede i toppen af editoren */
+.now-elt-canvas-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Background preview-størrelser */
+.now-elt-bg-prev {
+  max-width: 260px;
+  display: block;
+  margin-bottom: 6px;
+}
+.now-elt-bg-video-prev {
+  max-width: 520px;
+  display: block;
+  margin-bottom: 6px;
+}
+.now-elt-video-prev {
+  width: 100%;
+  max-width: 420px;
+  display: block;
+}
+
+/* Galleri thumbs */
+.now-elt-gallery-thumbs img {
+  max-width: 120px;
+  margin-right: 6px;
+}
+
 /* ========= Responsivitet ================================================== */
 @media (max-width: 1100px) {
   .wp-block-nowonline-elt-template .now-elt-edit-root {
