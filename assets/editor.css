@@ -2,8 +2,8 @@
    Header-bjælke + række-layout med label venstre / felt højre
 --------------------------------------------------------------------------- */
 
-/* Tokens */
-.wp-block-nowonline-elt-template .now-elt-edit-root {
+/* Tokens (VIGTIGT: samme-element selector, ingen mellemrum) */
+.wp-block-nowonline-elt-template.now-elt-edit-root {
   --elt-card: #fff;
   --elt-canvas: #f6f8fb;
   --elt-line: #e5e7eb;
@@ -13,10 +13,8 @@
   --elt-radius: 12px;
   --elt-gap: 16px;
   --elt-row-label-w: 200px; /* bredde for venstre kolonne i rækker */
-}
 
-/* Canvas rundt om hele modulet */
-.wp-block-nowonline-elt-template.now-elt-edit-root {
+  /* Canvas rundt om hele modulet */
   background: var(--elt-canvas);
   border: 1px solid var(--elt-line);
   border-radius: var(--elt-radius);
@@ -150,7 +148,7 @@
   -webkit-user-drag: none;
 }
 
-/* Stort preview-område i højre panel */
+/* Stort preview-område i højre panel (fallback-komponent) */
 .now-elt-inserter-preview {
   display: flex;
   align-items: center;
@@ -164,7 +162,8 @@
 .now-elt-inserter-preview img {
   max-width: 100%;
   max-height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center center;
   pointer-events: none; /* undgå utilsigtede events/drag */
   user-select: none;
 }
@@ -234,13 +233,31 @@
   min-width: 120px;
 }
 
-/* Canvas preview billede i toppen af editoren */
+/* Canvas preview billede i toppen af editoren (lille standard) */
 .now-elt-canvas-preview {
   display: block;
   width: 100%;
   height: auto;
   max-width: 100%;
-  margin: 0 auto;
+  max-height: 200px; /* lille “header”-preview i editoren */
+  margin: 0 0 10px 0;
+  border-radius: 8px;
+  border: 1px solid var(--elt-line);
+  background: #fff;
+  object-fit: contain;
+  object-position: center center;
+}
+
+/* STORT preview (bruges når editor.js sætter --large) */
+.now-elt-canvas-preview--large {
+  max-height: none !important;
+  aspect-ratio: 16 / 9; /* føles som Elementor hero */
+  height: auto;
+  width: 100%;
+  object-fit: cover; /* fyld hele feltet */
+  object-position: center;
+  border-radius: 10px;
+  margin-bottom: 12px;
 }
 
 /* Background preview-størrelser */
@@ -266,9 +283,88 @@
   margin-right: 6px;
 }
 
+/* ========= *** VIGTIGT ***: Kun billede i Gutenberg preview ============== */
+/* Dæk flest mulige preview-containere på tværs af WP-versioner */
+.block-editor-inserter__preview .now-elt-edit-root,
+.block-editor-inserter__preview-content .now-elt-edit-root,
+.block-editor-inserter__preview-area .now-elt-edit-root,
+.block-editor-inserter__preview-wrapper .now-elt-edit-root,
+.block-editor-block-preview__container .now-elt-edit-root,
+.block-editor-block-preview__content .now-elt-edit-root,
+.block-editor-block-card__preview .now-elt-edit-root,
+.block-editor-patterns__preview .now-elt-edit-root,
+.block-editor-patterns__preview-canvas .now-elt-edit-root,
+.block-editor-inserter__quick-inserter-preview .now-elt-edit-root,
+.block-editor-block-patterns__preview .now-elt-edit-root,
+.block-editor-block-card .now-elt-edit-root {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+/* Skjul ALT UI – vis KUN .now-elt-canvas-preview i alle preview-containere */
+.block-editor-inserter__preview
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-inserter__preview-content
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-inserter__preview-area
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-inserter__preview-wrapper
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-block-preview__container
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-block-preview__content
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-block-card__preview
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-patterns__preview
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-patterns__preview-canvas
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-inserter__quick-inserter-preview
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-block-patterns__preview
+  .now-elt-edit-root
+  > *:not(.now-elt-canvas-preview),
+.block-editor-block-card .now-elt-edit-root > *:not(.now-elt-canvas-preview) {
+  display: none !important;
+}
+
+/* Sørg for at preview-billedet er synligt og passer ind */
+.block-editor-inserter__preview .now-elt-canvas-preview,
+.block-editor-inserter__preview-content .now-elt-canvas-preview,
+.block-editor-inserter__preview-area .now-elt-canvas-preview,
+.block-editor-inserter__preview-wrapper .now-elt-canvas-preview,
+.block-editor-block-preview__container .now-elt-canvas-preview,
+.block-editor-block-preview__content .now-elt-canvas-preview,
+.block-editor-block-card__preview .now-elt-canvas-preview,
+.block-editor-patterns__preview .now-elt-canvas-preview,
+.block-editor-patterns__preview-canvas .now-elt-canvas-preview,
+.block-editor-inserter__quick-inserter-preview .now-elt-canvas-preview,
+.block-editor-block-patterns__preview .now-elt-canvas-preview,
+.block-editor-block-card .now-elt-canvas-preview {
+  display: block !important;
+  max-width: 100% !important;
+  height: auto !important;
+  border-radius: 8px;
+  object-fit: contain;
+  object-position: center center;
+  margin: 0 !important;
+}
+
 /* ========= Responsivitet ================================================== */
 @media (max-width: 1100px) {
-  .wp-block-nowonline-elt-template .now-elt-edit-root {
+  .wp-block-nowonline-elt-template.now-elt-edit-root {
     --elt-row-label-w: 170px;
   }
 }
@@ -282,4 +378,17 @@
     margin-bottom: 6px;
     align-self: auto;
   }
+}
+
+/* (Valgfrit) Undgå global påvirkning af alle blok-ikoner */
+.edit-post-sidebar .block-editor-block-icon {
+  height: auto !important;
+  width: 47px !important;
+}
+
+/* Ekstra sikkerhed: samme object-fit i begge previews */
+.now-elt-inserter-preview img,
+.now-elt-canvas-preview {
+  object-fit: contain;
+  object-position: center center;
 }

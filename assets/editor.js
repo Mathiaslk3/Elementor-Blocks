@@ -10,7 +10,14 @@
     function (s) {
       return s;
     };
-  var el = (WP.element && WP.element.createElement) || function () {};
+  var el = WP.element && WP.element.createElement;
+  if (!el) {
+    console.error(
+      "[NowOnline] wp.element mangler – kan ikke initialisere blok."
+    );
+    return;
+  }
+
   var domReady =
     WP.domReady ||
     function (cb) {
@@ -22,26 +29,51 @@
   var C = WP.components || {};
   var B = WP.blockEditor || WP.editor || {};
   var Blocks = WP.blocks || {};
-  var data = WP.data || {};
 
+  // --- scrub helper (fjerner __next* props på fallback widgets) -------------
+  function scrubNextProps(p) {
+    if (!p) return p;
+    var c = Object.assign({}, p);
+    delete c.__next40pxDefaultSize;
+    delete c.__nextHasNoMarginBottom;
+    return c;
+  }
+
+  // Components (med simple fallbacks) ----------------------------------------
   var PanelBody =
     C.PanelBody ||
     function (p) {
-      return el("div", p, p.children);
+      p = scrubNextProps(p);
+      var props = Object.assign({}, p);
+      return el("div", props, p && p.children);
     };
+
   var TextControl =
     C.TextControl ||
     function (p) {
-      return el("input", Object.assign({ type: "text" }, p));
+      p = scrubNextProps(p);
+      var i = Object.assign({ type: "text" }, p);
+      delete i.children;
+      delete i.label;
+      delete i.help;
+      return el("input", i);
     };
+
   var TextareaControl =
     C.TextareaControl ||
     function (p) {
-      return el("textarea", Object.assign({ rows: 4 }, p));
+      p = scrubNextProps(p);
+      var t = Object.assign({ rows: 4 }, p);
+      delete t.children;
+      delete t.label;
+      delete t.help;
+      return el("textarea", t);
     };
+
   var CheckboxControl =
     C.CheckboxControl ||
     function (p) {
+      p = scrubNextProps(p);
       return el(
         "label",
         {},
@@ -56,9 +88,11 @@
         p.label || ""
       );
     };
+
   var ColorPalette =
     C.ColorPalette ||
     function (p) {
+      p = scrubNextProps(p);
       return el("input", {
         type: "color",
         value: p.value || "#000000",
@@ -67,19 +101,21 @@
         },
       });
     };
+
   var Button =
     C.Button ||
     function (p) {
-      return el(
-        "button",
-        Object.assign({ type: "button", className: "button" }, p),
-        p.children
-      );
+      p = scrubNextProps(p);
+      var b = Object.assign({ type: "button", className: "button" }, p);
+      return el("button", b, p && p.children);
     };
 
-  var InspectorControls = B.InspectorControls || "div";
-  var MediaUpload = B.MediaUpload;
-  var RichText = B.RichText;
+  // VIGTIGT: ingen fallback til InspectorControls – undgå Slot/Fill mismatch
+  var InspectorControls = B && B.InspectorControls ? B.InspectorControls : null;
+
+  var MediaUpload = B && B.MediaUpload ? B.MediaUpload : null;
+  var RichText = B && B.RichText ? B.RichText : null;
+
   var useBlockProps =
     B && B.useBlockProps
       ? B.useBlockProps
@@ -103,9 +139,10 @@
   // Classic editor / TinyMCE API
   var OldEditor = (WP && (WP.editor || WP.oldEditor)) || null;
 
-  // LinkControl (fallback)
+  // LinkControl (ny først, ellers __experimental)
   var LinkControl =
-    (B && (B.__experimentalLinkControl || B.LinkControl)) ||
+    (B && B.LinkControl) ||
+    (B && B.__experimentalLinkControl) ||
     (C && C.__experimentalLinkControl) ||
     null;
 
@@ -121,7 +158,7 @@
     );
   }
 
-  // --- HTML entity decode ----------------------------------------------------
+  // --- helpers ---------------------------------------------------------------
   function decodeEntities(input) {
     if (typeof input !== "string" || !input) return input;
     var doc = new DOMParser().parseFromString(
@@ -129,6 +166,64 @@
       "text/html"
     );
     return (doc && doc.body && doc.body.textContent) || "";
+  }
+
+  // === Robust kilde til preview-billede (Elementor Blocks / Settings) =======
+  function getPreviewSrc(t) {
+    function take(v) {
+      if (!v) return "";
+      if (Array.isArray(v)) {
+        for (var i = 0; i < v.length; i++) {
+          var hit = take(v[i]);
+          if (hit) return hit;
+        }
+        return "";
+      }
+      if (typeof v === "string") return v;
+
+      if (v.url) return v.url;
+      if (v.src) return v.src;
+      if (v.preview_url) return v.preview_url;
+      if (v.previewUrl) return v.previewUrl;
+
+      if (v.sizes) {
+        if (v.sizes.large) return v.sizes.large.url || v.sizes.large;
+        if (v.sizes.full) return v.sizes.full.url || v.sizes.full;
+        if (v.sizes.medium) return v.sizes.medium.url || v.sizes.medium;
+      }
+
+      if (v.settings) {
+        var s =
+          take(v.settings.preview) ||
+          take(v.settings.image) ||
+          take(v.settings.screenshot) ||
+          take(v.settings.inserter);
+        if (s) return s;
+      }
+
+      var keys = [
+        "block_preview",
+        "blockPreview",
+        "preview",
+        "preview_image",
+        "previewImage",
+        "preview_large",
+        "previewLarge",
+        "inserter",
+        "thumb",
+        "image",
+        "screenshot",
+        "canvas",
+      ];
+      for (var i2 = 0; i2 < keys.length; i2++) {
+        if (v[keys[i2]]) {
+          var s2 = take(v[keys[i2]]);
+          if (s2) return s2;
+        }
+      }
+      return "";
+    }
+    return take(t) || (t && t.meta && take(t.meta)) || "";
   }
 
   function getFieldDefs(id) {
@@ -142,7 +237,6 @@
     });
   }
 
-  // strip “(Rich) / (Text) / …” i labels
   function cleanLabel(s) {
     return String(s || "").replace(
       /\s*\((?:rich|wysiwyg|text|textarea)\)\s*$/i,
@@ -153,7 +247,6 @@
     return cleanLabel(def.label || def.key);
   }
 
-  // 2-kolonne wrapper (label venstre, felt højre)
   function Row(label, content, key) {
     return el(
       "div",
@@ -175,35 +268,33 @@
     return null;
   }
 
-  // ---- URL normalisering ----------------------------------------------------
   function fixUrl(u) {
     u = (u || "").trim();
     if (!u) return u;
     if (u.indexOf("//") === 0) u = "https:" + u;
     u = u
       .replace(/^http\/:\/\//i, "http://")
-      .replace(/^https\/:\/\//i, "https://");
-    u = u
+      .replace(/^https\/:\/\//i, "https://")
       .replace(/^(https?:\/\/)(https?:\/\/)/i, "$1")
       .replace(/^(https?:\/\/)+/i, "$1");
     if (/^www\./i.test(u)) u = "https://" + u;
-    if (!/^[a-z][a-z0-9+.\-]*:\/\//i.test(u) && /^[^\/\s]+\.[^\s]+/.test(u))
+    if (!/^[a-z][a-z0-9+.\-]*:\/\//i.test(u) && /^[^\/\s]+\.[^\s]+/.test(u)) {
       u = "https://" + u;
+    }
     return u;
   }
 
-  // --- Rich sanitizer --------------------------------------------------------
   function sanitizeRichHtml(input, inlineOnly) {
     var html = String(input || "");
     if (!html) return "";
     var wrap = document.createElement("div");
     wrap.innerHTML = html;
 
-    function unwrapElement(node) {
-      var parent = node && node.parentNode;
-      if (!parent) return;
-      while (node.firstChild) parent.insertBefore(node.firstChild, node);
-      parent.removeChild(node);
+    function unwrap(node) {
+      var p = node && node.parentNode;
+      if (!p) return;
+      while (node.firstChild) p.insertBefore(node.firstChild, node);
+      p.removeChild(node);
     }
 
     var allowed = {
@@ -233,15 +324,16 @@
     var stack = [];
     for (var i = 0; i < wrap.childNodes.length; i++)
       stack.push(wrap.childNodes[i]);
-    var processed = 0,
-      LIMIT = 10000;
+
+    var processed = 0;
+    var LIMIT = 10000;
 
     while (stack.length && processed < LIMIT) {
       var node = stack.pop();
       processed++;
       if (!node || node.nodeType !== 1) continue;
-      var tag = node.tagName.toLowerCase();
 
+      var tag = node.tagName.toLowerCase();
       var cls = node.getAttribute("class") || "";
       if (cls && /elementor-/.test(cls)) node.removeAttribute("class");
 
@@ -250,9 +342,10 @@
         (/^h[1-6]$/.test(tag) || tag === "p" || tag === "div")
       ) {
         var childSnapshot = [];
-        for (var c = node.childNodes.length - 1; c >= 0; c--)
+        for (var c = node.childNodes.length - 1; c >= 0; c--) {
           childSnapshot.push(node.childNodes[c]);
-        unwrapElement(node);
+        }
+        unwrap(node);
         for (var s = 0; s < childSnapshot.length; s++)
           stack.push(childSnapshot[s]);
         continue;
@@ -261,13 +354,18 @@
       var keep =
         allowed[tag] ||
         (tag === "span" || tag === "p" || tag === "div" ? ["style"] : []);
+
       for (var ai = node.attributes.length - 1; ai >= 0; ai--) {
         var name = node.attributes[ai].name.toLowerCase();
         if (keep.indexOf(name) === -1) node.removeAttribute(name);
       }
-      for (var ci = node.childNodes.length - 1; ci >= 0; ci--)
+
+      // FIX: korrekt loop-betingelse
+      for (var ci = node.childNodes.length - 1; ci >= 0; ci--) {
         stack.push(node.childNodes[ci]);
+      }
     }
+
     return wrap.innerHTML;
   }
 
@@ -278,6 +376,7 @@
   function k(def) {
     return (def && def.key ? String(def.key) : "").toLowerCase().trim();
   }
+
   function norm(def) {
     var _t = t(def),
       _k = k(def);
@@ -303,6 +402,7 @@
     }
     return _t || "text";
   }
+
   function isRich(d) {
     return norm(d) === "rich";
   }
@@ -326,7 +426,6 @@
     var n = norm(d);
     return n === "text" || n === "p" || /^h[1-6]$/.test(n) || !n;
   }
-
   function isButtonTextDef(def) {
     var key = String(def.key || "").toLowerCase();
     var label = String(def.label || "").toLowerCase();
@@ -338,9 +437,10 @@
     );
   }
 
-  // --- Image field -----------------------------------------------------------
+  // --- Feltkomponenter -------------------------------------------------------
   function ImageField(block, def) {
     var url = (block.attributes.fields || {})[def.key] || "";
+
     function onSelect(media) {
       var u = (media && media.url) || "";
       var next = Object.assign({}, block.attributes.fields || {});
@@ -352,6 +452,7 @@
       delete next[def.key];
       block.setAttributes({ fields: next });
     }
+
     var preview = url
       ? el("img", { src: url, className: "now-elt-imgprev", alt: "" })
       : el(
@@ -394,7 +495,6 @@
     );
   }
 
-  // --- Video field -----------------------------------------------------------
   function VideoField(block, def) {
     var key = def.key;
     var fields = block.attributes.fields || {};
@@ -408,7 +508,6 @@
       else next[k] = v;
       block.setAttributes({ fields: next });
     }
-
     function onSelectVideo(media) {
       setField(key, (media && media.url) || "");
     }
@@ -523,25 +622,25 @@
     );
   }
 
-  // --- Gallery field ---------------------------------------------------------
   function GalleryField(block, def) {
     var value = (block.attributes.fields || {})[def.key] || [];
     if (!Array.isArray(value)) value = [];
 
     function onSelect(items) {
       var urls = [];
-      if (Array.isArray(items))
+      if (Array.isArray(items)) {
         urls = items
           .map(function (m) {
             return (m && (m.url || m.source_url)) || "";
           })
           .filter(Boolean);
-      else if (items && items.url) urls = [items.url];
+      } else if (items && items.url) {
+        urls = [items.url];
+      }
       var next = Object.assign({}, block.attributes.fields || {});
       next[def.key] = urls;
       block.setAttributes({ fields: next });
     }
-
     function clear() {
       var next = Object.assign({}, block.attributes.fields || {});
       delete next[def.key];
@@ -603,6 +702,165 @@
     );
   }
 
+  // ============ TinyMCE som komponent (hooks altid inde i komponent) ========
+  function TinyMCEField(props) {
+    var block = props.block;
+    var def = props.def;
+    var activeTab = props.activeTab;
+    var showEditor = props.showEditor; // init først når editor vises
+
+    var fieldKey = def.key;
+    var initial =
+      (block.attributes.fields && block.attributes.fields[fieldKey]) || "";
+    var inlineOnly = /^(titel|title|heading|overskrift|headline)$/i.test(
+      String(fieldKey || "")
+    );
+    var cleanedInitial = sanitizeRichHtml(initial, inlineOnly);
+
+    function safe(s) {
+      return String(s || "").replace(/[^a-z0-9_-]/gi, "");
+    }
+    var instId = safe(block.clientId || Math.random().toString(36).slice(2, 8));
+    var idRef = useRef("nowelt-" + instId + "-" + safe(fieldKey));
+    var taRef = useRef(null);
+
+    useEffect(
+      function () {
+        if (!showEditor) return;
+        if (!OldEditor || !OldEditor.initialize) return;
+        if (!(window.tinymce && window.tinymce.Editor)) return;
+
+        var disposed = false,
+          ed = null,
+          wait = null,
+          guard = null;
+
+        function hasEditor() {
+          return !!(
+            window.tinymce &&
+            window.tinymce.get &&
+            window.tinymce.get(idRef.current)
+          );
+        }
+        function sync() {
+          var raw =
+            ed && typeof ed.getContent === "function"
+              ? ed.getContent()
+              : taRef.current
+              ? taRef.current.value
+              : "";
+          var next = Object.assign({}, block.attributes.fields || {});
+          next[fieldKey] = sanitizeRichHtml(raw, inlineOnly) || "";
+          block.setAttributes({ fields: next });
+        }
+        function bindWhenReady() {
+          wait = setInterval(function () {
+            if (disposed) return;
+            ed =
+              window.tinymce &&
+              window.tinymce.get &&
+              window.tinymce.get(idRef.current);
+            if (ed) {
+              clearInterval(wait);
+              if (cleanedInitial) ed.setContent(cleanedInitial);
+              ed.on("change keyup input setcontent", sync);
+            }
+          }, 50);
+        }
+        function initIfNeeded() {
+          if (activeTab !== "content") return;
+          if (!showEditor) return;
+          if (hasEditor()) return;
+          try {
+            OldEditor.remove(idRef.current);
+          } catch (e) {}
+          if (
+            window.QTags &&
+            window.QTags.instances &&
+            window.QTags.instances[idRef.current]
+          ) {
+            try {
+              delete window.QTags.instances[idRef.current];
+            } catch (e) {}
+          }
+          OldEditor.initialize(idRef.current, {
+            tinymce: {
+              wpautop: true,
+              menubar: false,
+              toolbar1:
+                "formatselect,bold,italic,link,bullist,numlist,blockquote,alignleft,aligncenter,alignright,undo,redo",
+            },
+            quicktags: false,
+            mediaButtons: false,
+          });
+          bindWhenReady();
+        }
+
+        initIfNeeded();
+        guard = setInterval(function () {
+          if (
+            !disposed &&
+            activeTab === "content" &&
+            showEditor &&
+            !hasEditor()
+          )
+            initIfNeeded();
+        }, 200);
+        if (taRef.current) taRef.current.addEventListener("input", sync);
+
+        return function () {
+          disposed = true;
+          try {
+            OldEditor.remove(idRef.current);
+          } catch (e) {}
+          if (taRef.current) taRef.current.removeEventListener("input", sync);
+          clearInterval(wait);
+          clearInterval(guard);
+        };
+      },
+      [
+        block.clientId,
+        block.attributes.templateId,
+        fieldKey,
+        activeTab,
+        showEditor,
+      ]
+    );
+
+    return Row(
+      labelFor(def),
+      el("textarea", {
+        id: idRef.current,
+        ref: taRef,
+        defaultValue: cleanedInitial,
+      }),
+      fieldKey
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // Kun template-preview – til inserteren
+  function OnlyPreviewEl(tplId) {
+    var tpl = tplById(tplId) || {};
+    var prevSrc = tpl._previewSrc || getPreviewSrc(tpl) || "";
+    return el(
+      "div",
+      { className: "now-elt-inserter-preview" },
+      prevSrc
+        ? el("img", {
+            src: prevSrc,
+            alt: "",
+            draggable: false,
+            className: "now-elt-canvas-preview now-elt-canvas-preview--large",
+          })
+        : el(
+            "div",
+            { className: "now-elt-inserter-preview__empty" },
+            __("No preview available.", "nowonline")
+          )
+    );
+  }
+
   // --- Blok-registrering -----------------------------------------------------
   domReady(function () {
     try {
@@ -612,6 +870,7 @@
       var MAP = RAW_MAP.map(function (t) {
         var copy = Object.assign({}, t);
         copy.title = decodeEntities(t.title || "");
+        copy._previewSrc = getPreviewSrc(t) || "";
         return copy;
       });
       window.NOWONLINE_TEMPLATES_DECODED = MAP;
@@ -622,9 +881,12 @@
         Blocks.getBlockType && Blocks.getBlockType("nowonline/elt-template");
       if (!already) {
         Blocks.registerBlockType("nowonline/elt-template", {
+          apiVersion: 2,
           title: __("Elementor Template", "nowonline"),
           icon: Icon(),
           category: "nowonline-elementor",
+          supports: { inserter: true },
+          example: { attributes: { templateId: 0 } },
           attributes: {
             templateId: { type: "number", default: 0 },
             gap: { type: "number", default: 24 },
@@ -667,11 +929,37 @@
           },
 
           edit: function (props) {
+            var rootRef = useRef(null);
+
+            // preview-first toggle
+            var _show = useState(false),
+              showEditor = _show[0],
+              setShowEditor = _show[1];
+
+            var _tab = useState("content"),
+              activeTab = _tab[0],
+              setActiveTab = _tab[1];
+
+            // Inserter preview – KUN template-billede
+            if (props.__unstableIsPreview) {
+              var a = props.attributes || {};
+              return el("div", { ref: rootRef }, OnlyPreviewEl(a.templateId));
+            }
+
+            // --- Normal editor UI ------------------------------------------
             var attrs = props.attributes || {};
             var templateId = attrs.templateId || 0;
             var fields = attrs.fields || {};
-            var containerBg = attrs.containerBg || "";
 
+            // reset preview when template changes
+            useEffect(
+              function () {
+                setShowEditor(false);
+              },
+              [templateId]
+            );
+
+            var containerBg = attrs.containerBg || "";
             var btnTextColor = attrs.btnTextColor || "";
             var btnBorderColor = attrs.btnBorderColor || "";
             var btnBorderWidth = attrs.btnBorderWidth || "";
@@ -698,11 +986,6 @@
             var padTopMobile = attrs.padTopMobile || "";
             var padBottomMobile = attrs.padBottomMobile || "";
 
-            var _tab = useState("content"),
-              activeTab = _tab[0],
-              setActiveTab = _tab[1];
-            var contentVisible = activeTab === "content";
-
             function setField(k, v) {
               var next = Object.assign({}, fields);
               next[k] = v;
@@ -712,24 +995,6 @@
               props.setAttributes(next);
             }
 
-            // Inserter-preview (kun billede)
-            if (props.__unstableIsPreview) {
-              var tplPreview = tplById(templateId) || {};
-              var prevSrc = tplPreview.preview || tplPreview.thumb || "";
-              return el(
-                "div",
-                { className: "now-elt-inserter-preview" },
-                prevSrc
-                  ? el("img", { src: prevSrc, alt: "", draggable: false })
-                  : el(
-                      "div",
-                      { className: "now-elt-inserter-preview__empty" },
-                      __("No preview available.", "nowonline")
-                    )
-              );
-            }
-
-            // Feltdefinitioner
             var defs = getFieldDefs(templateId) || [];
             var richDefs = defs.filter(isRich);
             var textDefs = defs.filter(function (d) {
@@ -741,7 +1006,6 @@
             var galDefs = defs.filter(isGallery);
             var videoDefs = defs.filter(isVideo);
 
-            // --- Saml KNAP (tekst + link) -----------------------------------
             var btnTextDef = null;
             for (var i = 0; i < textDefs.length; i++) {
               if (isButtonTextDef(textDefs[i])) {
@@ -750,7 +1014,6 @@
               }
             }
             var btnUrlDef = urlDefs.length ? urlDefs[0] : null;
-
             if (btnTextDef)
               textDefs = textDefs.filter(function (d) {
                 return d !== btnTextDef;
@@ -760,7 +1023,6 @@
                 return d !== btnUrlDef;
               });
 
-            // Standard tekstfelter
             var textInputs = textDefs
               .map(function (def) {
                 var value = fields[def.key] || "";
@@ -795,7 +1057,6 @@
                 })
               );
 
-            // URL input – brug Gutenberg LinkControl hvis muligt
             function UrlInput(def) {
               var val = fields[def.key];
               var curr =
@@ -870,129 +1131,17 @@
               return GalleryField(props, def);
             });
 
-            // --- Rich (TinyMCE hvis muligt, ellers RichText) -----------------
-            function TinyMCEField(def) {
-              var fieldKey = def.key;
-              var initial =
-                (props.attributes.fields &&
-                  props.attributes.fields[fieldKey]) ||
-                "";
-
-              var inlineOnly =
-                /^(titel|title|heading|overskrift|headline)$/i.test(
-                  String(fieldKey || "")
-                );
-              var cleanedInitial = sanitizeRichHtml(initial, inlineOnly);
-
-              function safe(s) {
-                return String(s || "").replace(/[^a-z0-9_-]/gi, "");
-              }
-              var instId = safe(
-                props.clientId || Math.random().toString(36).slice(2, 8)
-              );
-              var idRef = useRef("nowelt-" + instId + "-" + safe(fieldKey));
-              var taRef = useRef(null);
-
-              useEffect(
-                function () {
-                  if (!OldEditor || !OldEditor.initialize) return;
-                  var disposed = false,
-                    ed = null,
-                    wait = null,
-                    guard = null;
-
-                  function hasEditor() {
-                    return !!(
-                      window.tinymce &&
-                      window.tinymce.get &&
-                      window.tinymce.get(idRef.current)
-                    );
-                  }
-                  function sync() {
-                    var raw =
-                      ed && typeof ed.getContent === "function"
-                        ? ed.getContent()
-                        : taRef.current
-                        ? taRef.current.value
-                        : "";
-                    var next = Object.assign({}, props.attributes.fields || {});
-                    next[fieldKey] = sanitizeRichHtml(raw, inlineOnly) || "";
-                    props.setAttributes({ fields: next });
-                  }
-                  function bindWhenReady() {
-                    wait = setInterval(function () {
-                      if (disposed) return;
-                      ed =
-                        window.tinymce &&
-                        window.tinymce.get &&
-                        window.tinymce.get(idRef.current);
-                      if (ed) {
-                        clearInterval(wait);
-                        if (cleanedInitial) ed.setContent(cleanedInitial);
-                        ed.on("change keyup input setcontent", sync);
-                      }
-                    }, 50);
-                  }
-                  function initIfNeeded() {
-                    if (!contentVisible) return;
-                    if (hasEditor()) return;
-                    try {
-                      OldEditor.remove(idRef.current);
-                    } catch (e) {}
-                    OldEditor.initialize(idRef.current, {
-                      tinymce: {
-                        wpautop: true,
-                        menubar: false,
-                        toolbar1:
-                          "formatselect,bold,italic,link,bullist,numlist,blockquote,alignleft,aligncenter,alignright,undo,redo",
-                      },
-                      quicktags: true,
-                      mediaButtons: false,
-                    });
-                    bindWhenReady();
-                  }
-
-                  initIfNeeded();
-                  guard = setInterval(function () {
-                    if (!disposed && contentVisible && !hasEditor())
-                      initIfNeeded();
-                  }, 200);
-                  if (taRef.current)
-                    taRef.current.addEventListener("input", sync);
-
-                  return function () {
-                    disposed = true;
-                    try {
-                      OldEditor.remove(idRef.current);
-                    } catch (e) {}
-                    if (taRef.current)
-                      taRef.current.removeEventListener("input", sync);
-                    clearInterval(wait);
-                    clearInterval(guard);
-                  };
-                },
-                [
-                  props.clientId,
-                  props.attributes.templateId,
-                  fieldKey,
-                  contentVisible,
-                ]
-              );
-
-              return Row(
-                labelFor(def),
-                el("textarea", {
-                  id: idRef.current,
-                  ref: taRef,
-                  defaultValue: cleanedInitial,
-                }),
-                fieldKey
-              );
-            }
-
             var richInputs =
-              OldEditor && OldEditor.initialize
-                ? richDefs.map(TinyMCEField)
+              OldEditor && OldEditor.initialize && window.tinymce
+                ? richDefs.map(function (def) {
+                    return el(TinyMCEField, {
+                      key: def.key,
+                      block: props,
+                      def: def,
+                      activeTab: activeTab,
+                      showEditor: showEditor,
+                    });
+                  })
                 : RichText
                 ? richDefs.map(function (def) {
                     var inlineOnly =
@@ -1037,7 +1186,7 @@
                     ),
                   ];
 
-            // --- Tabs ---------------------------------------------------------
+            // ---------- TabBtn (defineres før EditorShell) ----------
             function TabBtn(name, title) {
               var active = activeTab === name;
               return el(
@@ -1055,9 +1204,141 @@
               );
             }
 
-            function ButtonSection() {
-              if (!btnTextDef && !btnUrlDef) return null;
+            // ---------- PREVIEW-FIRST LAYER -------------
+            function PreviewFirstLayer() {
+              var tpl = tplById(templateId) || {};
+              var prevSrc = tpl._previewSrc || getPreviewSrc(tpl) || "";
+              return el(
+                "div",
+                { className: "now-elt-flat", ref: rootRef },
+                prevSrc
+                  ? el(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: function () {
+                          setShowEditor(true);
+                        },
+                        className: "now-elt-preview-toggle",
+                        style: {
+                          display: "block",
+                          background: "transparent",
+                          border: "0",
+                          padding: 0,
+                          cursor: "pointer",
+                          textAlign: "left",
+                        },
+                        "aria-label": __("Åbn editor", "nowonline"),
+                      },
+                      el("img", {
+                        key: "canvas",
+                        className:
+                          "now-elt-canvas-preview now-elt-canvas-preview--large",
+                        src: prevSrc,
+                        alt: "",
+                        draggable: false,
+                      }),
+                      el(
+                        "div",
+                        {
+                          className: "now-elt-overlay-hint",
+                          style: { marginTop: 8, opacity: 0.8 },
+                        },
+                        "Klik for at redigere"
+                      )
+                    )
+                  : el(
+                      "div",
+                      { className: "now-elt-inserter-preview__empty" },
+                      __("No preview available.", "nowonline"),
+                      el(
+                        "div",
+                        { style: { marginTop: 8 } },
+                        el(
+                          Button,
+                          {
+                            className: "button is-primary",
+                            onClick: function () {
+                              setShowEditor(true);
+                            },
+                          },
+                          __("Åbn editor", "nowonline")
+                        )
+                      )
+                    )
+              );
+            }
 
+            // ---------- Editor shell (image header → tabs → content) ----------
+            function EditorShell(childrenEl) {
+              var tpl = tplById(templateId) || {};
+              var prevSrc = tpl._previewSrc || getPreviewSrc(tpl) || "";
+              var title = tpl.title || "#" + (tpl.id || templateId);
+
+              return el(
+                "div",
+                { className: "now-elt-flat", ref: rootRef },
+                // header image
+                prevSrc
+                  ? el("img", {
+                      className:
+                        "now-elt-canvas-preview now-elt-canvas-preview--large",
+                      src: prevSrc,
+                      alt: "",
+                      draggable: false,
+                    })
+                  : null,
+
+                // tabs UNDER the image (only when editing)
+                el(
+                  "div",
+                  { className: "now-elt-tabbar", style: { marginTop: 12 } },
+                  el(
+                    "div",
+                    { role: "tablist" },
+                    TabBtn("content", __("Indhold", "nowonline")),
+                    TabBtn("design", __("Design", "nowonline")),
+                    TabBtn("background", __("Baggrund", "nowonline")),
+                    TabBtn("advanced", __("Advanced", "nowonline"))
+                  )
+                ),
+
+                // titlebar + "Vis preview"
+                el(
+                  "div",
+                  {
+                    className: "nowelt-flat-titlebar",
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginTop: 8,
+                    },
+                  },
+                  el(
+                    "h2",
+                    { className: "nowelt-flat-title", style: { margin: 0 } },
+                    title
+                  ),
+                  el(
+                    Button,
+                    {
+                      className: "button is-secondary",
+                      onClick: function () {
+                        setShowEditor(false);
+                      },
+                      style: { marginLeft: "auto" },
+                    },
+                    __("Vis preview", "nowonline")
+                  )
+                ),
+
+                // actual tab content
+                el("div", { style: { marginTop: 10 } }, childrenEl)
+              );
+            }
+
+            function ButtonSection() {
               var children = [];
               if (btnTextDef) {
                 children.push(
@@ -1078,7 +1359,7 @@
                 );
               }
               if (btnUrlDef) children.push(UrlInput(btnUrlDef));
-
+              if (!children.length) return null;
               return el(
                 PanelBody,
                 { title: __("Knap", "nowonline"), initialOpen: true },
@@ -1088,35 +1369,25 @@
 
             function ContentTab() {
               var btnSection = ButtonSection();
-
-              var titleEl = null;
-              if (templateId) {
-                var tpl = tplById(templateId) || {};
-                var title = tpl.title || "#" + (tpl.id || templateId);
-                titleEl = el("h2", { className: "nowelt-flat-title" }, title);
-              }
-
               var flatItems = []
                 .concat(btnSection ? [btnSection] : [])
-                .concat(richInputs)
-                .concat(textInputs)
-                .concat(linkInputs)
-                .concat(videoInputs)
-                .concat(imageInputs)
-                .concat(galleryInputs);
-
-              return el(
-                "div",
-                { className: "now-elt-flat" },
-                titleEl,
-                flatItems
-              );
+                .concat(
+                  richInputs,
+                  textInputs,
+                  linkInputs,
+                  videoInputs,
+                  imageInputs,
+                  galleryInputs
+                );
+              return el("div", {}, flatItems);
             }
 
+            // ---------------- DESIGN (med Knap-styling) -----------------
             function DesignTab() {
               return el(
                 "div",
                 {},
+                // Baggrundsfarve for container
                 el(
                   PanelBody,
                   { title: __("Background", "nowonline"), initialOpen: true },
@@ -1139,10 +1410,8 @@
                       onChange: function (v) {
                         setAttr({ containerBg: (v || "").trim() });
                       },
-                      placeholder: __(
+                      placeholder:
                         "fx #cf4747, rgb(), rgba(), hsl(), var(--token), red",
-                        "nowonline"
-                      ),
                       __next40pxDefaultSize: true,
                       __nextHasNoMarginBottom: true,
                       className: "now-elt-input-wide",
@@ -1159,6 +1428,8 @@
                     )
                   )
                 ),
+
+                // Knap-styling
                 el(
                   PanelBody,
                   { title: __("Knap", "nowonline"), initialOpen: false },
@@ -1254,6 +1525,7 @@
               );
             }
 
+            // ---------------- BAGGRUND (desktop/tablet/mobil) ------------
             function BackgroundTab() {
               function ImgPicker(label, key) {
                 var url = props.attributes[key] || "";
@@ -1392,6 +1664,7 @@
               return el(
                 "div",
                 {},
+                // Video
                 el(
                   PanelBody,
                   {
@@ -1400,6 +1673,8 @@
                   },
                   VideoPicker()
                 ),
+
+                // Desktop
                 el(
                   PanelBody,
                   {
@@ -1482,18 +1757,22 @@
                     )
                   )
                 ),
+
+                // Tablet
                 el(
                   PanelBody,
                   {
-                    title: __("Baggrundsbilledetablet", "nowonline"),
+                    title: __("Baggrundsbillede (tablet)", "nowonline"),
                     initialOpen: false,
                   },
                   ImgPicker(__("Tablet background", "nowonline"), "bgImgTablet")
                 ),
+
+                // Mobil
                 el(
                   PanelBody,
                   {
-                    title: __("Baggrundsbillede telefon", "nowonline"),
+                    title: __("Baggrundsbillede (telefon)", "nowonline"),
                     initialOpen: false,
                   },
                   ImgPicker(__("Mobile background", "nowonline"), "bgImgMobile")
@@ -1501,6 +1780,7 @@
               );
             }
 
+            // ---------------- Advanced (synlighed + padding) --------------
             function AdvancedTab() {
               function unitHelp() {
                 return __(
@@ -1540,7 +1820,7 @@
                 return el(
                   Button,
                   {
-                    className: "button is-secondary now-elt-mt-4",
+                    className: "button is-secondary",
                     onClick: function () {
                       var n = {};
                       keys.forEach(function (k) {
@@ -1548,10 +1828,12 @@
                       });
                       setAttr(n);
                     },
+                    style: { marginTop: 4 },
                   },
                   __("Nulstil", "nowonline")
                 );
               }
+
               return el(
                 "div",
                 {},
@@ -1560,34 +1842,36 @@
                   { title: __("Visibility", "nowonline"), initialOpen: true },
                   el(CheckboxControl, {
                     label: __("Skjul på computer", "nowonline"),
-                    checked: !!hideDesktop,
+                    checked: hideDesktop,
                     onChange: function (v) {
                       setAttr({ hideDesktop: !!v });
                     },
                   }),
                   el(CheckboxControl, {
                     label: __("Skjul på tablet", "nowonline"),
-                    checked: !!hideTablet,
+                    checked: hideTablet,
                     onChange: function (v) {
                       setAttr({ hideTablet: !!v });
                     },
                   }),
                   el(CheckboxControl, {
                     label: __("Skjul på telefon", "nowonline"),
-                    checked: !!hideMobile,
+                    checked: hideMobile,
                     onChange: function (v) {
                       setAttr({ hideMobile: !!v });
                     },
                   }),
                   el(
                     "div",
-                    { className: "now-elt-muted now-elt-mt-8" },
+                    { className: "now-elt-muted", style: { marginTop: 8 } },
                     __(
                       "Skjuler hele blokken pr. device. Renderes via server (frontend).",
                       "nowonline"
                     )
                   )
                 ),
+
+                // Desktop
                 el(
                   PanelBody,
                   { title: __("Computer", "nowonline"), initialOpen: true },
@@ -1601,6 +1885,8 @@
                   ),
                   ResetBtn(["padTopDesktop", "padBottomDesktop"])
                 ),
+
+                // Laptop
                 el(
                   PanelBody,
                   { title: __("Bærbar", "nowonline"), initialOpen: false },
@@ -1614,6 +1900,8 @@
                   ),
                   ResetBtn(["padTopLaptop", "padBottomLaptop"])
                 ),
+
+                // Tablet
                 el(
                   PanelBody,
                   { title: __("Tablet", "nowonline"), initialOpen: false },
@@ -1627,6 +1915,8 @@
                   ),
                   ResetBtn(["padTopTablet", "padBottomTablet"])
                 ),
+
+                // Mobil
                 el(
                   PanelBody,
                   { title: __("Telefon", "nowonline"), initialOpen: false },
@@ -1645,117 +1935,55 @@
 
             var blockProps = useBlockProps ? useBlockProps() : {};
             var rootProps = Object.assign({}, blockProps, {
+              ref: rootRef,
               className: (
                 (blockProps.className || "") + " now-elt-edit-root"
               ).trim(),
             });
 
-            return el(
-              "div",
-              rootProps,
-              el(function CanvasPreview() {
-                var tpl = tplById(templateId) || {};
-                var src = tpl.preview || tpl.thumb || "";
-                if (!src) return null;
-                return el("img", {
-                  src: src,
-                  alt: "",
-                  draggable: false,
-                  decoding: "async",
-                  className: "now-elt-canvas-preview",
-                });
-              }, {}),
-              el(
-                "div",
-                { className: "now-elt-tabbar" },
-                TabBtn("content", __("Indhold", "nowonline")),
-                TabBtn("design", __("Design", "nowonline")),
-                TabBtn("background", __("Baggrund", "nowonline")),
-                TabBtn("advanced", __("Advanced", "nowonline"))
-              ),
-              el(
-                "div",
-                {
-                  hidden: activeTab !== "content",
-                  className:
-                    activeTab === "content" ? "now-elt-tab on" : "now-elt-tab",
-                },
-                ContentTab()
-              ),
-              el(
-                "div",
-                {
-                  hidden: activeTab !== "design",
-                  className:
-                    activeTab === "design" ? "now-elt-tab on" : "now-elt-tab",
-                },
-                DesignTab()
-              ),
-              el(
-                "div",
-                {
-                  hidden: activeTab !== "background",
-                  className:
-                    activeTab === "background"
-                      ? "now-elt-tab on"
-                      : "now-elt-tab",
-                },
-                BackgroundTab()
-              ),
-              el(
-                "div",
-                {
-                  hidden: activeTab !== "advanced",
-                  className:
-                    activeTab === "advanced" ? "now-elt-tab on" : "now-elt-tab",
-                },
-                AdvancedTab()
-              ),
-              el(
-                InspectorControls,
-                {},
-                el(
-                  PanelBody,
-                  { title: __("(Info)", "nowonline"), initialOpen: false },
-                  el(
-                    "div",
-                    {},
-                    __("Denne blok rendres på frontend.", "nowonline")
-                  )
-                )
-              )
-            );
+            // RENDER
+            if (!showEditor) {
+              return el("div", rootProps, PreviewFirstLayer());
+            }
+
+            var tabContent =
+              activeTab === "design"
+                ? DesignTab()
+                : activeTab === "background"
+                ? BackgroundTab()
+                : activeTab === "advanced"
+                ? AdvancedTab()
+                : ContentTab();
+
+            return el("div", rootProps, EditorShell(tabContent));
           },
 
           save: function () {
             return null;
           },
-          supports: { inserter: true },
         });
       }
 
-      // Variationer (templateId sættes ved indsætning) – brug dekodede titler
+      // Variationer
       if (
         Blocks &&
         typeof Blocks.registerBlockVariation === "function" &&
-        Array.isArray(MAP)
+        Array.isArray(window.NOWONLINE_TEMPLATES_DECODED)
       ) {
-        MAP.forEach(function (t) {
+        window.NOWONLINE_TEMPLATES_DECODED.forEach(function (t) {
           var icon = t.thumb
-            ? function () {
-                return el("span", {
-                  className: "now-elt-var-thumb",
-                  style: { backgroundImage: "url(" + t.thumb + ")" }, // kun dynamic image
-                  draggable: false,
-                  "aria-hidden": true,
-                  onDragStart: function (e) {
-                    e.preventDefault && e.preventDefault();
-                  },
-                  onMouseDown: function (e) {
-                    e.preventDefault && e.preventDefault();
-                  },
-                });
-              }
+            ? el("span", {
+                className: "now-elt-var-thumb",
+                style: { backgroundImage: "url(" + t.thumb + ")" },
+                draggable: false,
+                "aria-hidden": true,
+                onDragStart: function (e) {
+                  e.preventDefault && e.preventDefault();
+                },
+                onMouseDown: function (e) {
+                  e.preventDefault && e.preventDefault();
+                },
+              })
             : Icon();
 
           Blocks.registerBlockVariation("nowonline/elt-template", {
@@ -1779,6 +2007,6 @@
   });
 
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { decodeEntities };
+    module.exports = { decodeEntities, getPreviewSrc };
   }
 })();
