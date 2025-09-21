@@ -360,7 +360,6 @@
         if (keep.indexOf(name) === -1) node.removeAttribute(name);
       }
 
-      // FIX: korrekt loop-betingelse
       for (var ci = node.childNodes.length - 1; ci >= 0; ci--) {
         stack.push(node.childNodes[ci]);
       }
@@ -724,7 +723,7 @@
     var idRef = useRef("nowelt-" + instId + "-" + safe(fieldKey));
     var taRef = useRef(null);
 
-    // HOLD NYESTE fields I EN REF (undgår stale closures når flere editors writes)
+    // HOLD NYESTE fields I EN REF (undgår stale closures)
     var fieldsRef = useRef(block.attributes.fields || {});
     useEffect(
       function () {
@@ -820,7 +819,6 @@
         if (taRef.current) taRef.current.addEventListener("input", sync);
 
         return function () {
-          // flush én gang ved unmount/tab-skift
           try {
             sync();
           } catch (e) {}
@@ -866,6 +864,9 @@
             src: prevSrc,
             alt: "",
             draggable: false,
+            onDragStart: function (e) {
+              e.preventDefault();
+            },
             className: "now-elt-canvas-preview now-elt-canvas-preview--large",
           })
         : el(
@@ -900,7 +901,10 @@
           title: __("Elementor Template", "nowonline"),
           icon: Icon(),
           category: "nowonline-elementor",
-          supports: { inserter: true },
+          supports: {
+            inserter: true,
+            align: false, // <<< ADDED: undgå align-variationer der kan give side-by-side
+          },
           example: { attributes: { templateId: 0 } },
           attributes: {
             templateId: { type: "number", default: 0 },
@@ -1223,18 +1227,29 @@
             function PreviewFirstLayer() {
               var tpl = tplById(templateId) || {};
               var prevSrc = tpl._previewSrc || getPreviewSrc(tpl) || "";
+
+              function openEditor() {
+                setShowEditor(true);
+              }
+
               return el(
                 "div",
                 { className: "now-elt-flat", ref: rootRef },
                 prevSrc
                   ? el(
-                      "button",
+                      "div",
                       {
-                        type: "button",
-                        onClick: function () {
-                          setShowEditor(true);
+                        role: "button",
+                        tabIndex: 0,
+                        onClick: openEditor,
+                        onKeyDown: function (e) {
+                          if (e.key === "Enter" || e.key === " ") openEditor();
                         },
                         className: "now-elt-preview-toggle",
+                        draggable: false,
+                        onDragStart: function (e) {
+                          e.preventDefault();
+                        },
                         style: {
                           display: "block",
                           background: "transparent",
@@ -1242,6 +1257,7 @@
                           padding: 0,
                           cursor: "pointer",
                           textAlign: "left",
+                          userSelect: "none",
                         },
                         "aria-label": __("Åbn editor", "nowonline"),
                       },
@@ -1252,12 +1268,21 @@
                         src: prevSrc,
                         alt: "",
                         draggable: false,
+                        onDragStart: function (e) {
+                          e.preventDefault();
+                        },
+                        style: { userSelect: "none" },
                       }),
                       el(
                         "div",
                         {
                           className: "now-elt-overlay-hint",
-                          style: { marginTop: 8, opacity: 0.8 },
+                          style: {
+                            marginTop: 8,
+                            opacity: 0.8,
+                            userSelect: "none",
+                            pointerEvents: "none", // <<< ADDED: lad drag pass-through → blå linje vises
+                          },
                         },
                         "Klik for at redigere"
                       )
@@ -1273,8 +1298,10 @@
                           Button,
                           {
                             className: "button is-primary",
-                            onClick: function () {
-                              setShowEditor(true);
+                            onClick: openEditor,
+                            draggable: false,
+                            onDragStart: function (e) {
+                              e.preventDefault();
                             },
                           },
                           __("Åbn editor", "nowonline")
@@ -1301,6 +1328,10 @@
                       src: prevSrc,
                       alt: "",
                       draggable: false,
+                      onDragStart: function (e) {
+                        e.preventDefault();
+                      },
+                      style: { userSelect: "none" },
                     })
                   : null,
 
@@ -1566,6 +1597,10 @@
                           src: url,
                           alt: "",
                           className: "now-elt-imgprev now-elt-bg-prev",
+                          draggable: false,
+                          onDragStart: function (e) {
+                            e.preventDefault();
+                          },
                         })
                       : el(
                           "div",
@@ -1952,9 +1987,22 @@
               );
             }
 
+            // --- ROOT PROPS (layout-fix mod side-by-side) -----------------
             var blockProps = useBlockProps ? useBlockProps() : {};
+            var rootStyle = Object.assign(
+              {},
+              (blockProps && blockProps.style) || {},
+              {
+                width: "100%",
+                flexBasis: "100%", // <<< ADDED: fyld hele rækken i flex/grid layouts
+                alignSelf: "stretch",
+                flexGrow: 1,
+                flexShrink: 0,
+              }
+            );
             var rootProps = Object.assign({}, blockProps, {
               ref: rootRef,
+              style: rootStyle, // <<< ADDED
               className: (
                 (blockProps.className || "") + " now-elt-edit-root"
               ).trim(),
