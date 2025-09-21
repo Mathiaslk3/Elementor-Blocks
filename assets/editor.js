@@ -724,6 +724,15 @@
     var idRef = useRef("nowelt-" + instId + "-" + safe(fieldKey));
     var taRef = useRef(null);
 
+    // HOLD NYESTE fields I EN REF (undgår stale closures når flere editors writes)
+    var fieldsRef = useRef(block.attributes.fields || {});
+    useEffect(
+      function () {
+        fieldsRef.current = block.attributes.fields || {};
+      },
+      [block.attributes.fields]
+    );
+
     useEffect(
       function () {
         if (!showEditor) return;
@@ -742,14 +751,16 @@
             window.tinymce.get(idRef.current)
           );
         }
+        function readRaw() {
+          return ed && typeof ed.getContent === "function"
+            ? ed.getContent()
+            : taRef.current
+            ? taRef.current.value
+            : "";
+        }
         function sync() {
-          var raw =
-            ed && typeof ed.getContent === "function"
-              ? ed.getContent()
-              : taRef.current
-              ? taRef.current.value
-              : "";
-          var next = Object.assign({}, block.attributes.fields || {});
+          var raw = readRaw();
+          var next = Object.assign({}, fieldsRef.current);
           next[fieldKey] = sanitizeRichHtml(raw, inlineOnly) || "";
           block.setAttributes({ fields: next });
         }
@@ -763,7 +774,7 @@
             if (ed) {
               clearInterval(wait);
               if (cleanedInitial) ed.setContent(cleanedInitial);
-              ed.on("change keyup input setcontent", sync);
+              ed.on("change input keyup setcontent undo redo blur", sync);
             }
           }, 50);
         }
@@ -809,6 +820,10 @@
         if (taRef.current) taRef.current.addEventListener("input", sync);
 
         return function () {
+          // flush én gang ved unmount/tab-skift
+          try {
+            sync();
+          } catch (e) {}
           disposed = true;
           try {
             OldEditor.remove(idRef.current);
@@ -1833,6 +1848,10 @@
                   __("Nulstil", "nowonline")
                 );
               }
+
+              var hideDesktop = !!attrs.hideDesktop;
+              var hideTablet = !!attrs.hideTablet;
+              var hideMobile = !!attrs.hideMobile;
 
               return el(
                 "div",

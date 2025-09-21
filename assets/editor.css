@@ -381,7 +381,7 @@
 }
 
 /* (Valgfrit) Undgå global påvirkning af alle blok-ikoner */
-.edit-post-sidebar .block-editor-block-icon {
+.block-editor-block-icon {
   height: auto !important;
   width: 47px !important;
 }
