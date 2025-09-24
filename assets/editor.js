@@ -284,7 +284,6 @@
     return u;
   }
 
-  // ✅ FIXED: korrekt while/for-iteration
   function sanitizeRichHtml(input, inlineOnly) {
     var html = String(input || "");
     if (!html) return "";
@@ -323,7 +322,8 @@
     };
 
     var stack = [];
-    for (var i = 0; i < wrap.childNodes.length; i++) stack.push(wrap.childNodes[i]);
+    for (var i = 0; i < wrap.childNodes.length; i++)
+      stack.push(wrap.childNodes[i]);
 
     var processed = 0;
     var LIMIT = 10000;
@@ -337,13 +337,17 @@
       var cls = node.getAttribute("class") || "";
       if (cls && /elementor-/.test(cls)) node.removeAttribute("class");
 
-      if (inlineOnly && (/^h[1-6]$/.test(tag) || tag === "p" || tag === "div")) {
+      if (
+        inlineOnly &&
+        (/^h[1-6]$/.test(tag) || tag === "p" || tag === "div")
+      ) {
         var childSnapshot = [];
         for (var c = node.childNodes.length - 1; c >= 0; c--) {
           childSnapshot.push(node.childNodes[c]);
         }
         unwrap(node);
-        for (var s = 0; s < childSnapshot.length; s++) stack.push(childSnapshot[s]);
+        for (var s = 0; s < childSnapshot.length; s++)
+          stack.push(childSnapshot[s]);
         continue;
       }
 
@@ -899,7 +903,7 @@
           category: "nowonline-elementor",
           supports: {
             inserter: true,
-            align: false, // undgå align-variationer der kan give side-by-side
+            align: false, // <<< ADDED: undgå align-variationer der kan give side-by-side
           },
           example: { attributes: { templateId: 0 } },
           attributes: {
@@ -941,9 +945,6 @@
 
             containerTargetMode: { type: "string", default: "auto" },
             containerTarget: { type: "string", default: "" },
-
-            // >>> NYT: antal accordion-sæt (titel/beskrivelse)
-            accordCount: { type: "number", default: 0 },
           },
 
           edit: function (props) {
@@ -968,7 +969,6 @@
             var attrs = props.attributes || {};
             var templateId = attrs.templateId || 0;
             var fields = attrs.fields || {};
-            var accordCount = parseInt(attrs.accordCount || 0, 10) || 0;
 
             // reset preview when template changes
             useEffect(
@@ -1007,8 +1007,7 @@
 
             function setField(k, v) {
               var next = Object.assign({}, fields);
-              if (v === null) delete next[k];
-              else next[k] = v;
+              next[k] = v;
               props.setAttributes({ fields: next });
             }
             function setAttr(next) {
@@ -1206,95 +1205,6 @@
                     ),
                   ];
 
-            // ---------- Accordions (nye placeholders) ----------
-            function accKey(base, idx) {
-              return idx === 1 ? base : base + "_" + idx;
-            }
-            function AccordionsSection() {
-              var items = [];
-              for (var i = 1; i <= accordCount; i++) {
-                var titleDef = {
-                  key: accKey("According_titel", i),
-                  label: "According titel " + i,
-                  type: "rich",
-                };
-                var bodyDef = {
-                  key: accKey("According_beskrivelse", i),
-                  label: "According beskrivelse " + i,
-                  type: "rich",
-                };
-                items.push(
-                  el(
-                    "div",
-                    { key: "acc-item-" + i, className: "now-elt-accordion-item" },
-                    el(TinyMCEField, {
-                      key: titleDef.key,
-                      block: props,
-                      def: titleDef,
-                      activeTab: activeTab,
-                      showEditor: showEditor,
-                    }),
-                    el(TinyMCEField, {
-                      key: bodyDef.key,
-                      block: props,
-                      def: bodyDef,
-                      activeTab: activeTab,
-                      showEditor: showEditor,
-                    })
-                  )
-                );
-              }
-
-              function addItem() {
-                setAttr({ accordCount: accordCount + 1 });
-              }
-              function removeLast() {
-                if (accordCount <= 0) return;
-                var tKey = accKey("According_titel", accordCount);
-                var bKey = accKey("According_beskrivelse", accordCount);
-                var next = Object.assign({}, props.attributes.fields || {});
-                delete next[tKey];
-                delete next[bKey];
-                props.setAttributes({ fields: next, accordCount: accordCount - 1 });
-              }
-
-              return el(
-                PanelBody,
-                { title: __("Accordions", "nowonline"), initialOpen: true },
-                el(
-                  "div",
-                  { className: "now-elt-btnrow" },
-                  el(
-                    Button,
-                    { className: "button", onClick: addItem },
-                    __("Tilføj accordion", "nowonline")
-                  ),
-                  accordCount > 0
-                    ? el(
-                        Button,
-                        { className: "button is-secondary", onClick: removeLast },
-                        __("Fjern sidste", "nowonline")
-                      )
-                    : null
-                ),
-                accordCount === 0
-                  ? el(
-                      "div",
-                      { className: "now-elt-muted", style: { marginTop: 8 } },
-                      __("Ingen accordions tilføjet endnu.", "nowonline")
-                    )
-                  : el("div", { className: "now-elt-accordion-list" }, items),
-                el(
-                  "div",
-                  { className: "now-elt-muted", style: { marginTop: 8 } },
-                  __("Placeholder-navne i templaten:", "nowonline"),
-                  " ",
-                  "[[According_titel]], [[According_beskrivelse]]",
-                  " (og _2, _3, … for flere)."
-                )
-              );
-            }
-
             // ---------- TabBtn (defineres før EditorShell) ----------
             function TabBtn(name, title) {
               var active = activeTab === name;
@@ -1371,7 +1281,7 @@
                             marginTop: 8,
                             opacity: 0.8,
                             userSelect: "none",
-                            pointerEvents: "none", // lad drag pass-through → blå linje vises
+                            pointerEvents: "none", // <<< ADDED: lad drag pass-through → blå linje vises
                           },
                         },
                         "Klik for at redigere"
@@ -1508,7 +1418,6 @@
               var flatItems = []
                 .concat(btnSection ? [btnSection] : [])
                 .concat(
-                  AccordionsSection(), // <<< NYT
                   richInputs,
                   textInputs,
                   linkInputs,
@@ -1626,7 +1535,10 @@
                     onChange: function (v) {
                       setAttr({ btnBorderWidth: (v || "").trim() });
                     },
-                    help: __("Fx 2px, 0.125rem eller 0 for ingen.", "nowonline"),
+                    help: __(
+                      "Fx 2px, 0.125rem eller 0 for ingen.",
+                      "nowonline"
+                    ),
                   }),
                   el(TextControl, {
                     label: __("Border radius", "nowonline"),
@@ -1785,7 +1697,10 @@
                                 onChange: function (v) {
                                   setAttr({ bgVideo: (v || "").trim() });
                                 },
-                                placeholder: __("or paste video URL…", "nowonline"),
+                                placeholder: __(
+                                  "or paste video URL…",
+                                  "nowonline"
+                                ),
                                 className: "now-elt-mt-8 now-elt-input-wide",
                               })
                             );
@@ -1885,7 +1800,9 @@
                         onChange: function (v) {
                           setAttr({ bgFixed: !!v });
                         },
-                        label: bgFixed ? __("Yes", "nowonline") : __("No", "nowonline"),
+                        label: bgFixed
+                          ? __("Yes", "nowonline")
+                          : __("No", "nowonline"),
                       })
                     )
                   )
@@ -2077,7 +1994,7 @@
               (blockProps && blockProps.style) || {},
               {
                 width: "100%",
-                flexBasis: "100%", // fyld hele rækken i flex/grid layouts
+                flexBasis: "100%", // <<< ADDED: fyld hele rækken i flex/grid layouts
                 alignSelf: "stretch",
                 flexGrow: 1,
                 flexShrink: 0,
@@ -2085,7 +2002,7 @@
             );
             var rootProps = Object.assign({}, blockProps, {
               ref: rootRef,
-              style: rootStyle,
+              style: rootStyle, // <<< ADDED
               className: (
                 (blockProps.className || "") + " now-elt-edit-root"
               ).trim(),
