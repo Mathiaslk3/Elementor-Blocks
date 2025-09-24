@@ -63,7 +63,7 @@ final class Renderer
             . $fsBase . ' p,'  . $fsBase . ' .elementor-widget-text-editor,' . $fsBase . ' .elementor-widget-text-editor p{font-size:var(--now-fs-body)!important;}'
             . $fsBase . ' a.elementor-button,' . $fsBase . ' .elementor-button{font-size:var(--now-fs-btn)!important;}';
 
-        // Neutraliser inline font-size i overskrifter KUN på tablet/mobil
+        // Neutraliser inline font-size/line-height i headings på ALLE breakpoints
         $killInlineSel = implode(',', [
             $fsBase.' .elementor-heading-title[style*="font-size"]',
             $fsBase.' .elementor-heading-title [style*="font-size"]',
@@ -74,13 +74,13 @@ final class Renderer
             $fsBase.' h5[style*="font-size"]', $fsBase.' h5 [style*="font-size"]',
             $fsBase.' h6[style*="font-size"]', $fsBase.' h6 [style*="font-size"]'
         ]);
-        $killInlineCss = '@media (max-width:1024px){'.$killInlineSel.'{font-size:inherit!important;line-height:inherit!important;}}';
+        $killInlineCss = $killInlineSel.'{font-size:inherit!important;line-height:inherit!important;}';
 
-        // Byg CSS sikkert
+        // Byg CSS
         $css  = '';
         $css .= '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}';
         $css .= '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}';
-        // VIGTIGT: kun background-color (ellers nulstilles background-image)
+        // Kun background-color (ellers nulstilles background-image)
         $css .= $targets.'{background-color:var(--now-bg-color)!important;}';
         $css .= $overlayTargets.'{background-color:var(--now-bg-color)!important;}';
 
@@ -99,7 +99,7 @@ final class Renderer
         // Var-mapping KUN på desktop (≥1025px)
         $css .= '@media (min-width:1025px){'.$fsCss.'}';
 
-        // Nulstil inline font-size KUN på tablet/mobil
+        // Nulstil inline font-size/line-height globalt for headings
         $css .= $killInlineCss;
 
         $css .= '.nowonline-elt-wrapper .nowelt-has-bgvid{position:relative;overflow:hidden;}';
@@ -129,7 +129,7 @@ final class Renderer
             }
         }
 
-        // WHY: undgå mixed content når site går på SSL
+        // undgå mixed content når site går på SSL
         if (is_ssl() && stripos($u, 'http://') === 0) {
             $homeHost = parse_url(home_url(), PHP_URL_HOST);
             $urlHost  = parse_url($u, PHP_URL_HOST);
@@ -185,6 +185,11 @@ final class Renderer
         return '';
     }
 
+    /**
+     * Server-side sanitizer til rich HTML.
+     * inlineOnly=true => fjerner blok-tags, style-attributter og spans,
+     * så teksten arver styling fra templaten (Elementor).
+     */
     private static function sanitize_rich_html(string $html, bool $inlineOnly = false): string
     {
         $html = (string)$html;
@@ -194,14 +199,15 @@ final class Renderer
         $html = preg_replace('/\sclass=("|\').*?\1/i', '', $html);
 
         if ($inlineOnly) {
+            $html = preg_replace('#</?(?:p|div|h[1-6]|section|article|header|footer|blockquote|ul|ol|li)[^>]*>#i', '', $html);
+            $html = preg_replace('/\sstyle=("|\').*?\1/i', '', $html);
+            $html = preg_replace('#</?span[^>]*>#i', '', $html);
+
             $allowed = [
                 'a'      => ['href' => true, 'target' => true, 'rel' => true],
-                'span'   => ['style' => true],
                 'strong' => [], 'em' => [], 'b' => [], 'i' => [], 'u' => [],
                 'br'     => [], 'code' => [], 'sup' => [], 'sub' => [],
             ];
-            // Drop blokke helt ved at strippe dem og beholde indmaten
-            $html = preg_replace('#</?(?:p|div|h[1-6]|section|article|header|footer)[^>]*>#i', '', $html);
             return wp_kses($html, $allowed);
         }
 
@@ -275,7 +281,7 @@ final class Renderer
             $type = self::norm_type($defs, $key);
 
             if ($type === 'text' && isset($bgKeysInHtml[$key])) {
-                $type = 'bg'; // WHY: nøgle bruges som bg i templaten
+                $type = 'bg';
             }
 
             if ($type !== 'img' && $type !== 'bg') continue;
@@ -796,6 +802,7 @@ final class Renderer
         });
     }
 
+    /** Opdater knap-labels (ID, data-now-label, now-label-*, data-now-key) uden at bryde Elementor markup */
     private static function rewrite_button_labels_dom(string $html, array $fields): string
     {
         $map = [];
@@ -930,6 +937,99 @@ final class Renderer
         echo "<script>(function(){var d=document;d.documentElement.classList.add('nowelt-replace-header');if(d.body){d.body.classList.add('nowelt-replace-header');}})();</script>";
     }
 
+    /** Hjælper: find første ikke-tomme tekstværdi ud fra en liste af keys */
+    private static function first_text_from_fields(array $fields, array $keys, bool $inlineOnly): string
+    {
+        foreach ($keys as $k) {
+            if (!array_key_exists($k, $fields)) continue;
+            $val = $fields[$k];
+            $raw = '';
+            if (is_array($val)) {
+                $raw = (string)($val['title'] ?? $val['text'] ?? $val['label'] ?? '');
+            } else {
+                $raw = (string)$val;
+            }
+            $san = self::sanitize_rich_html($raw, $inlineOnly);
+            $san = trim(wp_strip_all_tags($san));
+            if ($san !== '') return $san;
+        }
+        return '';
+    }
+
+    /** Hjælper: find første ikke-tomme RICH HTML (bevar markup) ud fra keys */
+    private static function first_html_from_fields(array $fields, array $keys): string
+    {
+        foreach ($keys as $k) {
+            if (!array_key_exists($k, $fields)) continue;
+            $val = $fields[$k];
+            $raw = is_array($val) ? (string)($val['html'] ?? $val['content'] ?? $val['text'] ?? $val['title'] ?? '') : (string)$val;
+            $san = self::sanitize_rich_html($raw, false);
+            $txt = trim(wp_strip_all_tags($san));
+            if ($txt !== '') return $san;
+        }
+        return '';
+    }
+
+    /** NY: Skriv titel/undertitel/beskrivelse ind i Elementor-widgets, selv uden [[placeholder]] */
+    private static function rewrite_core_content_dom(string $html, array $fields, array $defs): string
+    {
+        if (empty($fields)) return $html;
+
+        // Nøglekandidater (lowercase)
+        $titleKeys     = ['titel','title','heading','overskrift','headline'];
+        $subtitleKeys  = ['undertitel','subtitle','tagline'];
+        $descKeys      = ['beskrivelse','description','tekst','text','content','indhold'];
+
+        // Værdier
+        $titleText    = self::first_text_from_fields($fields, $titleKeys, true);
+        $subtitleText = self::first_text_from_fields($fields, $subtitleKeys, true);
+        $descHtml     = self::first_html_from_fields($fields, $descKeys);
+
+        if ($titleText === '' && $subtitleText === '' && $descHtml === '') return $html;
+
+        return self::safeDom($html, function(\DOMDocument $doc, \DOMXPath $xpath, \DOMElement $root) use ($titleText, $subtitleText, $descHtml) {
+            // Headings (Elementor)
+            if ($titleText !== '') {
+                $h1 = $xpath->query('//*[contains(concat(" ", normalize-space(@class), " "), " elementor-heading-title ")]')->item(0);
+                if ($h1 instanceof \DOMElement) {
+                    while ($h1->firstChild) $h1->removeChild($h1->firstChild);
+                    $h1->appendChild($doc->createTextNode($titleText));
+                }
+            }
+            if ($subtitleText !== '') {
+                $nodes = $xpath->query('//*[contains(concat(" ", normalize-space(@class), " "), " elementor-heading-title ")]');
+                if ($nodes && $nodes->length >= 2) {
+                    $h2 = $nodes->item(1);
+                    if ($h2 instanceof \DOMElement) {
+                        while ($h2->firstChild) $h2->removeChild($h2->firstChild);
+                        $h2->appendChild($doc->createTextNode($subtitleText));
+                    }
+                }
+            }
+
+            // Tekst-editor (Elementor)
+            if ($descHtml !== '') {
+                $cont = $xpath->query('//*[contains(concat(" ", normalize-space(@class), " "), " elementor-widget-text-editor ")]//*[contains(concat(" ", normalize-space(@class), " "), " elementor-widget-container ")]')->item(0);
+                if ($cont instanceof \DOMElement) {
+                    while ($cont->firstChild) $cont->removeChild($cont->firstChild);
+                    // Indsæt HTML-fragment
+                    $frag = $doc->createDocumentFragment();
+                    // appendXML kan fejle på & – sikr basic encoding
+                    if (@$frag->appendXML('<div>'.$descHtml.'</div>')) {
+                        // Flyt børn af wrapper ind i cont
+                        $tmp = $frag->firstChild;
+                        if ($tmp) {
+                            while ($tmp->firstChild) { $cont->appendChild($tmp->firstChild); }
+                        }
+                    } else {
+                        // fallback: som tekst
+                        $cont->appendChild($doc->createTextNode(wp_strip_all_tags($descHtml)));
+                    }
+                }
+            }
+        });
+    }
+
     public function render($attrs = [], $content = ''): string
     {
         $tid    = isset($attrs['templateId']) ? (int)$attrs['templateId'] : 0;
@@ -1044,6 +1144,7 @@ final class Renderer
         // Video/poster maps før BG
         [$videoMap, $posterMap] = self::build_video_maps($defs, $fields);
 
+        // === Token-udskiftning, hvis der er placeholders ===
         if (!empty($fields)) {
             $search  = [];
             $replace = [];
@@ -1104,6 +1205,7 @@ final class Renderer
                     $inlineKeys = ['titel','title','heading','overskrift','headline','undertitel','subtitle'];
                     $inlineOnly = in_array($key, $inlineKeys, true);
                     $html_val = self::sanitize_rich_html((string)$v, $inlineOnly);
+
                     $tokens = ['[[rich:' . $key . ']]', '[[wysiwyg:' . $key . ']]', '[[' . $key . ']]',
                                '[[text:' . $key . ']]','[[p:' . $key . ']]',
                                '[[h1:' . $key . ']]','[[h2:' . $key . ']]','[[h3:' . $key . ']]',
@@ -1120,6 +1222,7 @@ final class Renderer
             if ($search) $html = str_replace($search, $replace, $html);
         }
 
+        // Links (href/target) på a[data-now-key], .now-link-*, #now-link-*
         $linkMap = self::build_link_map($defs, $fields);
 
         if (!empty($linkMap)) {
@@ -1176,8 +1279,13 @@ final class Renderer
             );
         }
 
+        // Knap-labels
         $html = self::rewrite_button_labels_dom($html, $fields);
 
+        // NY: Skriv titel/undertitel/beskrivelse ind i Elementor widgets hvis der ikke var placeholders
+        $html = self::rewrite_core_content_dom($html, $fields, $defs);
+
+        // Media & galleries & videos
         [$imgMap, $bgMap] = self::build_media_maps($defs, $fields, $html);
         if (!empty($imgMap) || !empty($bgMap)) {
             $html = self::rewrite_media_dom($html, $imgMap, $bgMap);
@@ -1195,6 +1303,7 @@ final class Renderer
             $html = self::apply_bg_color_inline($html, $bgColor);
         }
 
+        // Baggrund: billede/video (failsafe)
         $html = self::apply_bg_media_inline($html, [
             'img'       => $bgImg,
             'imgTablet' => $bgImgTab,
@@ -1205,6 +1314,7 @@ final class Renderer
             'video'     => $bgVideo,
         ], $videoMap);
 
+        // Responsive CSS: hide/padding pr. device + DESKTOP-ONLY font-size vars
         $uid = 'nowblk-' . uniqid();
         $sel = '[data-nowblk-id="'.$uid.'"]';
         $respCss = '';
