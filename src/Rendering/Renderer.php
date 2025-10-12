@@ -22,12 +22,16 @@ final class Renderer
 
     public function register(): void
     {
-        add_action('wp_head',   [$this, 'frontend_css']);
+        // Kør CSS sent så vi vinder over Elementor/tema (og undgår minify-race)
+        add_action('wp_head',   [$this, 'frontend_css'], 999);
         add_action('wp_footer', [$this, 'inject_header_body_class']);
     }
 
     public function frontend_css(): void
     {
+        // VIGTIGT: Ingen frontend-CSS i admin (Gutenberg m.m.)
+        if (is_admin()) return;
+
         $sel = apply_filters('nowonline_elt_header_hide_selectors', [
             'header[role="banner"]','.elementor-location-header','#masthead','.site-header',
             'header.site-header','header.header','.ast-desktop-header','.ast-mobile-header-wrap',
@@ -51,28 +55,40 @@ final class Renderer
                 . $btnScope . ' a.elementor-button,'
                 . $btnScope . ' a.elementor-button-link';
 
-        // Var-baseret font-size mapping – kun desktop (≥1025px)
-        $fsBase = '.nowonline-elt-wrapper .nowonline-elt-module';
-        $fsCss  =
-              $fsBase . ' h1,' . $fsBase . ' .elementor-widget-heading h1.elementor-heading-title{font-size:var(--now-fs-h1)!important;}'
-            . $fsBase . ' h2,' . $fsBase . ' .elementor-widget-heading h2.elementor-heading-title{font-size:var(--now-fs-h2)!important;}'
-            . $fsBase . ' h3,' . $fsBase . ' .elementor-widget-heading h3.elementor-heading-title{font-size:var(--now-fs-h3)!important;}'
-            . $fsBase . ' h4,' . $fsBase . ' .elementor-widget-heading h4.elementor-heading-title{font-size:var(--now-fs-h4)!important;}'
-            . $fsBase . ' h5,' . $fsBase . ' .elementor-widget-heading h5.elementor-heading-title{font-size:var(--now-fs-h5)!important;}'
-            . $fsBase . ' h6,' . $fsBase . ' .elementor-widget-heading h6.elementor-heading-title{font-size:var(--now-fs-h6)!important;}'
-            . $fsBase . ' p,'  . $fsBase . ' .elementor-widget-text-editor,' . $fsBase . ' .elementor-widget-text-editor p{font-size:var(--now-fs-body)!important;}'
-            . $fsBase . ' a.elementor-button,' . $fsBase . ' .elementor-button{font-size:var(--now-fs-btn)!important;}';
+        // === Desktop font-size mapping – AKTIVERES KUN pr. level via wrapper-klasser ===
+        $mk = static function(string $level): string {
+            $sel = '.nowonline-elt-wrapper.nowelt-fs-'.$level.' .nowonline-elt-module ';
+            return $sel.$level.','.
+                   $sel.'.elementor-widget-heading '.$level.'.elementor-heading-title' .
+                   '{font-size:var(--now-fs-'.$level.')!important;}';
+        };
 
-        // Neutraliser inline font-size/line-height i headings på ALLE breakpoints
+        $fsCss =
+              $mk('h1')
+            . $mk('h2')
+            . $mk('h3')
+            . $mk('h4')
+            . $mk('h5')
+            . $mk('h6')
+            . '.nowonline-elt-wrapper.nowelt-fs-body .nowonline-elt-module p,'
+            . '.nowonline-elt-wrapper.nowelt-fs-body .nowonline-elt-module .elementor-widget-text-editor,'
+            . '.nowonline-elt-wrapper.nowelt-fs-body .nowonline-elt-module .elementor-widget-text-editor p'
+            . '{font-size:var(--now-fs-body)!important;}'
+            . '.nowonline-elt-wrapper.nowelt-fs-btn .nowonline-elt-module a.elementor-button,'
+            . '.nowonline-elt-wrapper.nowelt-fs-btn .nowonline-elt-module .elementor-button'
+            . '{font-size:var(--now-fs-btn)!important;}';
+
+        // Neutraliser INLINE font-size/line-height i overskrifter KUN hvis wrapper har heading-fs:
+        $killBase = '.nowonline-elt-wrapper.nowelt-fs-headings .nowonline-elt-module';
         $killInlineSel = implode(',', [
-            $fsBase.' .elementor-heading-title[style*="font-size"]',
-            $fsBase.' .elementor-heading-title [style*="font-size"]',
-            $fsBase.' h1[style*="font-size"]', $fsBase.' h1 [style*="font-size"]',
-            $fsBase.' h2[style*="font-size"]', $fsBase.' h2 [style*="font-size"]',
-            $fsBase.' h3[style*="font-size"]', $fsBase.' h3 [style*="font-size"]',
-            $fsBase.' h4[style*="font-size"]', $fsBase.' h4 [style*="font-size"]',
-            $fsBase.' h5[style*="font-size"]', $fsBase.' h5 [style*="font-size"]',
-            $fsBase.' h6[style*="font-size"]', $fsBase.' h6 [style*="font-size"]'
+            $killBase.' .elementor-heading-title[style*="font-size"]',
+            $killBase.' .elementor-heading-title [style*="font-size"]',
+            $killBase.' h1[style*="font-size"]', $killBase.' h1 [style*="font-size"]',
+            $killBase.' h2[style*="font-size"]', $killBase.' h2 [style*="font-size"]',
+            $killBase.' h3[style*="font-size"]', $killBase.' h3 [style*="font-size"]',
+            $killBase.' h4[style*="font-size"]', $killBase.' h4 [style*="font-size"]',
+            $killBase.' h5[style*="font-size"]', $killBase.' h5 [style*="font-size"]',
+            $killBase.' h6[style*="font-size"]', $killBase.' h6 [style*="font-size"]'
         ]);
         $killInlineCss = $killInlineSel.'{font-size:inherit!important;line-height:inherit!important;}';
 
@@ -96,10 +112,10 @@ final class Renderer
               . 'border-color:var(--now-btn-bdc)!important;'
               . '}';
 
-        // Var-mapping KUN på desktop (≥1025px)
+        // Var-mapping KUN på desktop (≥1025px) og kun for wrappers med de relevante klasser
         $css .= '@media (min-width:1025px){'.$fsCss.'}';
 
-        // Nulstil inline font-size/line-height globalt for headings
+        // Nulstil inline font-size/line-height for headings (scopet til wrappers med heading-fs)
         $css .= $killInlineCss;
 
         $css .= '.nowonline-elt-wrapper .nowelt-has-bgvid{position:relative;overflow:hidden;}';
@@ -259,6 +275,7 @@ final class Renderer
         return $out;
     }
 
+    /** NY: Opdag bg‐nøgler direkte i HTML (så data-now-bg|hero virker uden scanner‐defs) */
     private static function discover_bg_keys_in_html(string $html): array
     {
         $keys = [];
@@ -271,6 +288,7 @@ final class Renderer
         return array_keys($keys);
     }
 
+    /** Ændret: modtager $html og tvinger type=bg for nøgler brugt i HTML */
     private static function build_media_maps(array $defs, array $fields, string $html): array
     {
         $img = $bg = [];
@@ -281,7 +299,7 @@ final class Renderer
             $type = self::norm_type($defs, $key);
 
             if ($type === 'text' && isset($bgKeysInHtml[$key])) {
-                $type = 'bg';
+                $type = 'bg'; // nøgle bruges som bg i templaten
             }
 
             if ($type !== 'img' && $type !== 'bg') continue;
@@ -551,6 +569,7 @@ final class Renderer
         });
     }
 
+    /** Sæt kun background-color inline (bevar background-image) */
     private static function apply_bg_color_inline(string $html, string $color): string
     {
         if ($color === '') return $html;
@@ -579,6 +598,7 @@ final class Renderer
         });
     }
 
+    /** Find container til baggrundsmedie */
     private static function discover_bg_target_node(\DOMXPath $xpath): ?\DOMElement
     {
         $q = [
@@ -594,7 +614,7 @@ final class Renderer
             $n = $xpath->query($expr)->item(0);
             if ($n instanceof \DOMElement) return $n;
         }
-        return null;
+               return null;
     }
 
     private static function is_video_file(string $u): bool
@@ -602,6 +622,7 @@ final class Renderer
         return (bool)preg_match('~\.(mp4|m4v|webm|ogv|ogg)(\?.*)?$~i', $u);
     }
 
+    /** Billede/Video baggrund – robust og failsafe */
     private static function apply_bg_media_inline(string $html, array $opts, array $videoMap = []): string
     {
         $img        = isset($opts['img']) ? (string)$opts['img'] : '';
@@ -933,6 +954,9 @@ final class Renderer
 
     public function inject_header_body_class(): void
     {
+        // VIGTIGT: Ingen DOM-klasse-scripts i admin
+        if (is_admin()) return;
+
         if (!self::$hasHeaderBlock) return;
         echo "<script>(function(){var d=document;d.documentElement.classList.add('nowelt-replace-header');if(d.body){d.body.classList.add('nowelt-replace-header');}})();</script>";
     }
@@ -970,7 +994,7 @@ final class Renderer
         return '';
     }
 
-    /** NY: Skriv titel/undertitel/beskrivelse ind i Elementor-widgets, selv uden [[placeholder]] */
+    /** Skriv titel/undertitel/beskrivelse ind i Elementor-widgets, selv uden [[placeholder]] */
     private static function rewrite_core_content_dom(string $html, array $fields, array $defs): string
     {
         if (empty($fields)) return $html;
@@ -1014,9 +1038,7 @@ final class Renderer
                     while ($cont->firstChild) $cont->removeChild($cont->firstChild);
                     // Indsæt HTML-fragment
                     $frag = $doc->createDocumentFragment();
-                    // appendXML kan fejle på & – sikr basic encoding
                     if (@$frag->appendXML('<div>'.$descHtml.'</div>')) {
-                        // Flyt børn af wrapper ind i cont
                         $tmp = $frag->firstChild;
                         if ($tmp) {
                             while ($tmp->firstChild) { $cont->appendChild($tmp->firstChild); }
@@ -1074,6 +1096,7 @@ final class Renderer
         $padTopMobile     = self::sanitize_spacing($attrs['padTopMobile']     ?? '');
         $padBottomMobile  = self::sanitize_spacing($attrs['padBottomMobile']  ?? '');
 
+        // === Custom properties på wrapper (baggrund/knap)
         $vars = [];
         if ($bgColor        !== '') $vars['--now-bg-color']  = $bgColor;
         if ($btnTextColor   !== '') $vars['--now-btn-color'] = $btnTextColor;
@@ -1088,6 +1111,24 @@ final class Renderer
                 array_keys($vars), $vars
             ))) . '"';
         }
+
+        // === Desktop FS-variabler + wrapper-klasser pr. level
+        $desktopVars = '';
+        $fsClasses   = [];
+        $hasHeadingFs = false;
+
+        if ($fsH1  !== '') { $desktopVars .= '--now-fs-h1:'.$fsH1.';'; $fsClasses[]='nowelt-fs-h1'; $hasHeadingFs = true; }
+        if ($fsH2  !== '') { $desktopVars .= '--now-fs-h2:'.$fsH2.';'; $fsClasses[]='nowelt-fs-h2'; $hasHeadingFs = true; }
+        if ($fsH3  !== '') { $desktopVars .= '--now-fs-h3:'.$fsH3.';'; $fsClasses[]='nowelt-fs-h3'; $hasHeadingFs = true; }
+        if ($fsH4  !== '') { $desktopVars .= '--now-fs-h4:'.$fsH4.';'; $fsClasses[]='nowelt-fs-h4'; $hasHeadingFs = true; }
+        if ($fsH5  !== '') { $desktopVars .= '--now-fs-h5:'.$fsH5.';'; $fsClasses[]='nowelt-fs-h5'; $hasHeadingFs = true; }
+        if ($fsH6  !== '') { $desktopVars .= '--now-fs-h6:'.$fsH6.';'; $fsClasses[]='nowelt-fs-h6'; $hasHeadingFs = true; }
+        if ($fsBody!== '') { $desktopVars .= '--now-fs-body:'.$fsBody.';'; $fsClasses[]='nowelt-fs-body'; }
+        if ($fsBtn !== '') { $desktopVars .= '--now-fs-btn:'.$fsBtn.';';  $fsClasses[]='nowelt-fs-btn'; }
+
+        if ($hasHeadingFs) $fsClasses[] = 'nowelt-fs-headings';
+
+        $extraClass = $fsClasses ? ' '.implode(' ', $fsClasses) : '';
 
         if ($tid <= 0) {
             return '<div class="nowonline-elt-empty">' . esc_html__('Vælg en Elementor-template fra blok-listen.', 'nowonline') . '</div>';
@@ -1104,38 +1145,46 @@ final class Renderer
             $html = do_shortcode('[elementor-template id="' . $tid . '"]');
         }
         if (!$html) {
+            // tom wrapper + responsive CSS
             $uid = 'nowblk-' . uniqid();
+            $sel = '[data-nowblk-id="'.$uid.'"]';
             $respCss = '';
-            if ($hideDesktop) $respCss .= '@media (min-width:1025px){[data-nowblk-id="'.$uid.'"]{display:none!important}}';
-            if ($hideTablet)  $respCss .= '@media (min-width:768px) and (max-width:1024px){[data-nowblk-id="'.$uid.'"]{display:none!important}}';
-            if ($hideMobile)  $respCss .= '@media (max-width:767px){[data-nowblk-id="'.$uid.'"]{display:none!important}}';
+
             if ($padTopDesktop || $padBottomDesktop) {
-                $respCss .= '[data-nowblk-id="'.$uid.'"]{'
+                $respCss .= $sel.'{'
                     . ($padTopDesktop    ? 'padding-top:'.$padTopDesktop.';' : '')
                     . ($padBottomDesktop ? 'padding-bottom:'.$padBottomDesktop.';' : '')
                     . '}';
             }
             if ($padTopLaptop || $padBottomLaptop) {
-                $respCss .= '@media (max-width:1440px){[data-nowblk-id="'.$uid.'"]{'
+                $respCss .= '@media (max-width:1440px){'.$sel.'{'
                     . ($padTopLaptop    ? 'padding-top:'.$padTopLaptop.';' : '')
                     . ($padBottomLaptop ? 'padding-bottom:'.$padBottomLaptop.';' : '')
                     . '}}';
             }
             if ($padTopTablet || $padBottomTablet) {
-                $respCss .= '@media (max-width:1024px){[data-nowblk-id="'.$uid.'"]{'
+                $respCss .= '@media (max-width:1024px){'.$sel.'{'
                     . ($padTopTablet    ? 'padding-top:'.$padTopTablet.';' : '')
                     . ($padBottomTablet ? 'padding-bottom:'.$padBottomTablet.';' : '')
                     . '}}';
             }
             if ($padTopMobile || $padBottomMobile) {
-                $respCss .= '@media (max-width:767px){[data-nowblk-id="'.$uid.'"]{'
+                $respCss .= '@media (max-width:767px){'.$sel.'{'
                     . ($padTopMobile    ? 'padding-top:'.$padTopMobile.';' : '')
                     . ($padBottomMobile ? 'padding-bottom:'.$padBottomMobile.';' : '')
                     . '}}';
             }
+            if ($hideDesktop) $respCss .= '@media (min-width:1025px){'.$sel.'{display:none!important}}';
+            if ($hideTablet)  $respCss .= '@media (min-width:768px) and (max-width:1024px){'.$sel.'{display:none!important}}';
+            if ($hideMobile)  $respCss .= '@media (max-width:767px){'.$sel.'{display:none!important}}';
+
+            // injicer desktop FS-variabler kun hvis sat:
+            if ($desktopVars !== '') {
+                $respCss .= '@media (min-width:1025px){'.$sel.'{'.$desktopVars.'}}';
+            }
 
             $styleTag = $respCss ? '<style>'.$respCss.'</style>' : '';
-            return '<div class="nowonline-elt-wrapper"'.$styleAttr.' data-nowblk-id="'.$uid.'">'.$styleTag.'<div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"></div></div>';
+            return '<div class="nowonline-elt-wrapper'.$extraClass.'"'.$styleAttr.' data-nowblk-id="'.$uid.'">'.$styleTag.'<div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"></div></div>';
         }
 
         $html = self::normalize_elementor_attributes($html);
@@ -1144,7 +1193,7 @@ final class Renderer
         // Video/poster maps før BG
         [$videoMap, $posterMap] = self::build_video_maps($defs, $fields);
 
-        // === Token-udskiftning, hvis der er placeholders ===
+        // === Token-udskiftning
         if (!empty($fields)) {
             $search  = [];
             $replace = [];
@@ -1348,16 +1397,6 @@ final class Renderer
         if ($hideTablet)  $respCss .= '@media (min-width:768px) and (max-width:1024px){'.$sel.'{display:none!important}}';
         if ($hideMobile)  $respCss .= '@media (max-width:767px){'.$sel.'{display:none!important}}';
 
-        $desktopVars = '';
-        if ($fsH1  !== '') $desktopVars .= '--now-fs-h1:'.$fsH1.';';
-        if ($fsH2  !== '') $desktopVars .= '--now-fs-h2:'.$fsH2.';';
-        if ($fsH3  !== '') $desktopVars .= '--now-fs-h3:'.$fsH3.';';
-        if ($fsH4  !== '') $desktopVars .= '--now-fs-h4:'.$fsH4.';';
-        if ($fsH5  !== '') $desktopVars .= '--now-fs-h5:'.$fsH5.';';
-        if ($fsH6  !== '') $desktopVars .= '--now-fs-h6:'.$fsH6.';';
-        if ($fsBody!== '') $desktopVars .= '--now-fs-body:'.$fsBody.';';
-        if ($fsBtn !== '') $desktopVars .= '--now-fs-btn:'.$fsBtn.';';
-
         if ($desktopVars !== '') {
             $respCss .= '@media (min-width:1025px){'.$sel.'{'.$desktopVars.'}}';
         }
@@ -1371,9 +1410,9 @@ final class Renderer
         }
         if ($isHeader) $data_attr .= ' data-nowelt-is-header="1"';
 
-        return '<div class="nowonline-elt-wrapper"'.$styleAttr.' data-nowblk-id="'.$uid.'">'
+        return '<div class="nowonline-elt-wrapper'.$extraClass.'"'.$styleAttr.' data-nowblk-id="'.$uid.'">'
              . $styleResponsiveTag
-             . '<div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"' . $data_attr . '>'
+             . '<div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"'.$data_attr.'>'
              . $html
              . '</div></div>';
     }

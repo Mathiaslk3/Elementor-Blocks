@@ -271,6 +271,7 @@
     var html = String(input || "");
     if (!html) return "";
 
+    // Headline/inline: returnér ren tekst
     if (inlineOnly) {
       var doc = new DOMParser().parseFromString(
         "<!doctype html><body>" + html,
@@ -280,15 +281,10 @@
       return text.replace(/\s+/g, " ").trim();
     }
 
+    // Rich (ikke-inline): fjern ALLE class-attributter (matcher serverens sanitizer),
+    // tillad kun sikre attributter
     var wrap = document.createElement("div");
     wrap.innerHTML = html;
-
-    function unwrap(node) {
-      var p = node && node.parentNode;
-      if (!p) return;
-      while (node.firstChild) p.insertBefore(node.firstChild, node);
-      p.removeChild(node);
-    }
 
     var allowed = {
       a: ["href", "target", "rel"],
@@ -326,16 +322,21 @@
       if (!node || node.nodeType !== 1) continue;
 
       var tag = node.tagName.toLowerCase();
-      var cls = node.getAttribute("class") || "";
-      if (cls && /elementor-/.test(cls)) node.removeAttribute("class");
+
+      // Fjern altid class-attributter (uanset indhold)
+      if (node.hasAttribute("class")) node.removeAttribute("class");
 
       var keep =
         allowed[tag] ||
         (tag === "span" || tag === "p" || tag === "div" ? ["style"] : []);
+
+      // Fjern alle ikke-tilladte attributter
       for (var ai = node.attributes.length - 1; ai >= 0; ai--) {
         var name = node.attributes[ai].name.toLowerCase();
         if (keep.indexOf(name) === -1) node.removeAttribute(name);
       }
+
+      // DFS
       for (var ci = node.childNodes.length - 1; ci >= 0; ci--)
         stack.push(node.childNodes[ci]);
     }
@@ -890,6 +891,23 @@
 
       if (!Blocks || !Blocks.registerBlockType) return;
 
+      // Vælg kategori, fallback til 'widgets' hvis custom kategori ikke findes
+      var desiredCat = "nowonline-elementor";
+      var useCat = desiredCat;
+      try {
+        var cats = Blocks.getCategories ? Blocks.getCategories() : [];
+        if (
+          !cats ||
+          !cats.some(function (c) {
+            return c && c.slug === desiredCat;
+          })
+        ) {
+          useCat = "widgets";
+        }
+      } catch (e) {
+        useCat = "widgets";
+      }
+
       var already =
         Blocks.getBlockType && Blocks.getBlockType("nowonline/elt-template");
       if (!already) {
@@ -897,7 +915,7 @@
           apiVersion: 2,
           title: __("Elementor Template", "nowonline"),
           icon: Icon(),
-          category: "nowonline-elementor",
+          category: useCat,
           supports: { inserter: true, align: false },
           example: { attributes: { templateId: 0 } },
           attributes: {
@@ -1774,7 +1792,7 @@
                   el(
                     "div",
                     { className: "now-elt-label" },
-                    __("baggrunds video", "nowonline")
+                    __("Baggrundsvideo", "nowonline")
                   ),
                   el(
                     "div",
@@ -1843,7 +1861,7 @@
                 el(
                   PanelBody,
                   {
-                    title: __("baggrunds video", "nowonline"),
+                    title: __("Baggrundsvideo", "nowonline"),
                     initialOpen: true,
                   },
                   VideoPicker()
@@ -1884,6 +1902,12 @@
                           "top right",
                           "bottom left",
                           "bottom right",
+                          // ekstra short-hands matcher backend-sanitizeren
+                          "center",
+                          "top",
+                          "bottom",
+                          "left",
+                          "right",
                         ].map(function (p) {
                           return el("option", { key: p, value: p }, p);
                         })

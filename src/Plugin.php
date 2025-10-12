@@ -1,14 +1,15 @@
 <?php
+// File: src/Plugin.php
 namespace NowOnline\EltBlocks;
 
 if (!defined('ABSPATH')) { exit; }
 
 final class Plugin
 {
-    public const VER = '2.13.20';
+    public const VER = '2.13.24';
     private static ?Plugin $instance = null;
 
-    /** @var array<class-string,object> */
+    /** @var array<string,mixed> */
     private array $services = [];
 
     private function __construct() {}
@@ -27,20 +28,29 @@ final class Plugin
         $this->get(\NowOnline\EltBlocks\Services\PlaceholderScanner::class);
 
         // Admin
-        $this->get(\NowOnline\EltBlocks\Admin\SettingsPage::class)->register();
-        $this->get(\NowOnline\EltBlocks\Admin\Ajax::class)->register();
+        $sp = $this->get(\NowOnline\EltBlocks\Admin\SettingsPage::class);
+        if ($sp && method_exists($sp, 'register')) { $sp->register(); }
+
+        $ajax = $this->get(\NowOnline\EltBlocks\Admin\Ajax::class);
+        if ($ajax && method_exists($ajax, 'register')) { $ajax->register(); }
+
         // NEW: Modern editor UI
-        $this->get(\NowOnline\EltBlocks\Admin\AdminUI::class)->register();
+        $ui = $this->get(\NowOnline\EltBlocks\Admin\AdminUI::class);
+        if ($ui && method_exists($ui, 'register')) { $ui->register(); }
 
         // Assets
-        $this->get(\NowOnline\EltBlocks\Assets\Assets::class)->register(self::VER);
+        $assets = $this->get(\NowOnline\EltBlocks\Assets\Assets::class);
+        if ($assets && method_exists($assets, 'register')) { $assets->register(self::VER); }
 
         // Runtime
-        $this->get(\NowOnline\EltBlocks\Rendering\Renderer::class)->register();
-        $this->get(\NowOnline\EltBlocks\Blocks\TemplateBlock::class)->register();
+        $renderer = $this->get(\NowOnline\EltBlocks\Rendering\Renderer::class);
+        if ($renderer && method_exists($renderer, 'register')) { $renderer->register(); }
+
+        $block = $this->get(\NowOnline\EltBlocks\Blocks\TemplateBlock::class);
+        if ($block && method_exists($block, 'register')) { $block->register(); }
     }
 
-    /** tiny service container */
+    /** Tiny service container */
     public function get(string $class)
     {
         if (isset($this->services[$class])) return $this->services[$class];
@@ -62,6 +72,14 @@ final class Plugin
                 break;
 
             case \NowOnline\EltBlocks\Rendering\Renderer::class:
+                // Defensive: hvis klassen ikke kan loades, crash ikke hele sitet
+                if (!class_exists(\NowOnline\EltBlocks\Rendering\Renderer::class)) {
+                    if (function_exists('error_log')) {
+                        error_log('[NowOnline EltBlocks] Renderer class missing – site kept alive.');
+                    }
+                    $this->services[$class] = null;
+                    break;
+                }
                 $this->services[$class] = new \NowOnline\EltBlocks\Rendering\Renderer(
                     $this->get(\NowOnline\EltBlocks\Services\PlaceholderScanner::class)
                 );
@@ -79,13 +97,13 @@ final class Plugin
                 $this->services[$class] = new \NowOnline\EltBlocks\Admin\Ajax();
                 break;
 
-            // NEW: Admin UI service
             case \NowOnline\EltBlocks\Admin\AdminUI::class:
                 $this->services[$class] = new \NowOnline\EltBlocks\Admin\AdminUI();
                 break;
 
             default:
-                $this->services[$class] = new $class();
+                // Sidste udvej – prøv at instantiere hvis klassen findes, ellers returnér null
+                $this->services[$class] = class_exists($class) ? new $class() : null;
         }
         return $this->services[$class];
     }
