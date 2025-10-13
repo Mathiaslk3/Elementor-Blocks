@@ -413,6 +413,26 @@
     );
   }
 
+  // --------------------------------------------------------------------------
+  // Injecter editor-CSS (max-width 1360px + centrering)
+  function ensureEditorCSS() {
+    var id = "nowelt-editor-css";
+    if (document.getElementById(id)) return;
+    var css =
+      ".now-elt-edit-root{max-width:1360px;margin-left:auto;margin-right:auto}"+
+      ".now-elt-flat{max-width:1360px;margin-left:auto;margin-right:auto}"+
+      ".now-elt-inserter-preview{max-width:1360px;margin-left:auto;margin-right:auto}"+
+      ".now-elt-canvas-preview{display:block;max-width:1360px;width:100%;height:auto;margin-left:auto;margin-right:auto}"+
+      ".now-elt-sec-item{max-width:1360px;margin-left:auto;margin-right:auto}"+
+      ".now-elt-tabbar{max-width:1360px;margin-left:auto;margin-right:auto}"+
+      ".nowelt-flat-titlebar{max-width:1360px;margin-left:auto;margin-right:auto}";
+    var tag = document.createElement("style");
+    tag.id = id;
+    tag.type = "text/css";
+    tag.appendChild(document.createTextNode(css));
+    document.head.appendChild(tag);
+  }
+
   // --- Feltkomponenter -------------------------------------------------------
   function ImageField(block, def) {
     var url = (block.attributes.fields || {})[def.key] || "";
@@ -794,7 +814,7 @@
               wpautop: !inlineOnly,
               forced_root_block: inlineOnly ? "" : "p",
               menubar: false,
-              paste_as_text: !!inlineOnly, // titel: indsæt som ren tekst
+              paste_as_text: !!inlineOnly,
               toolbar1: inlineOnly
                 ? "bold,italic,underline,undo,redo"
                 : "formatselect,bold,italic,link,bullist,numlist,blockquote,alignleft,aligncenter,alignright,undo,redo",
@@ -877,6 +897,8 @@
 
   // --- Blok-registrering -----------------------------------------------------
   domReady(function () {
+    ensureEditorCSS();
+
     try {
       var RAW_MAP = Array.isArray(window.NOWONLINE_TEMPLATES)
         ? window.NOWONLINE_TEMPLATES
@@ -916,7 +938,8 @@
           title: __("Elementor Template", "nowonline"),
           icon: Icon(),
           category: useCat,
-          supports: { inserter: true, align: false },
+          // kun fuld-bredde align i editoren
+          supports: { inserter: true, align: ["full"] },
           example: { attributes: { templateId: 0 } },
           attributes: {
             templateId: { type: "number", default: 0 },
@@ -977,6 +1000,59 @@
             var _tab = useState("content"),
               activeTab = _tab[0],
               setActiveTab = _tab[1];
+
+            // Forhindr side-om-side – flyt ud af Columns/Row/Group automatisk
+            var movedRef = useRef(false);
+            var PROBLEM_PARENTS = {
+              "core/columns": 1,
+              "core/column": 1,
+              "core/row": 1,
+              "core/group": 1,
+            };
+
+            useEffect(function () {
+              if (!WP || !WP.data || !WP.data.select || !WP.data.dispatch)
+                return;
+
+              var beSel = WP.data.select("core/block-editor");
+              var beDisp = WP.data.dispatch("core/block-editor");
+              var notices =
+                WP.data.dispatch && WP.data.dispatch("core/notices");
+
+              if (!beSel || !beDisp) return;
+
+              try {
+                var parents = beSel.getBlockParents(props.clientId) || [];
+                var isInProblemParent = parents.some(function (pid) {
+                  var n = beSel.getBlockName(pid);
+                  return !!PROBLEM_PARENTS[n];
+                });
+
+                if (isInProblemParent && !movedRef.current) {
+                  var block = beSel.getBlock(props.clientId);
+                  if (!block) return;
+
+                  beDisp.removeBlocks([props.clientId], false);
+                  beDisp.insertBlocks(block);
+
+                  movedRef.current = true;
+
+                  if (notices && notices.createNotice) {
+                    notices.createNotice(
+                      "warning",
+                      __(
+                        "NowOnline-blokken kan ikke placeres side om side. Den er flyttet til fuld bredde.",
+                        "nowonline"
+                      ),
+                      { type: "snackbar" }
+                    );
+                  }
+                }
+              } catch (e) {}
+            }, [
+              props.clientId,
+              (props.attributes && props.attributes.templateId) || 0,
+            ]);
 
             if (props.__unstableIsPreview) {
               var a = props.attributes || {};
@@ -1887,7 +1963,7 @@
                       el(
                         "select",
                         {
-                          value: bgPos,
+                          value: (attrs.bgPos || "center center"),
                           onChange: function (e) {
                             setAttr({ bgPos: e.target.value });
                           },
@@ -1902,7 +1978,6 @@
                           "top right",
                           "bottom left",
                           "bottom right",
-                          // ekstra short-hands matcher backend-sanitizeren
                           "center",
                           "top",
                           "bottom",
@@ -1924,7 +1999,7 @@
                       el(
                         "select",
                         {
-                          value: bgSize,
+                          value: (attrs.bgSize || "cover"),
                           onChange: function (e) {
                             setAttr({ bgSize: e.target.value });
                           },
@@ -1943,13 +2018,11 @@
                         __("Background Fixed", "nowonline")
                       ),
                       el(CheckboxControl, {
-                        checked: !!bgFixed,
+                        checked: !!attrs.bgFixed,
                         onChange: function (v) {
                           setAttr({ bgFixed: !!v });
                         },
-                        label: bgFixed
-                          ? __("Yes", "nowonline")
-                          : __("No", "nowonline"),
+                        label: attrs.bgFixed ? __("Yes", "nowonline") : __("No", "nowonline"),
                       })
                     )
                   )
@@ -2128,8 +2201,10 @@
               (blockProps && blockProps.style) || {},
               {
                 width: "100%",
+                maxWidth: "1360px",
+                margin: "0 auto",
                 flexBasis: "100%",
-                alignSelf: "stretch",
+                alignSelf: "center",
                 flexGrow: 1,
                 flexShrink: 0,
               }

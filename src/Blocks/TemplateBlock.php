@@ -31,9 +31,20 @@ final class TemplateBlock
                 'background' => ['type' => 'object', 'default' => []],
                 'responsive' => ['type' => 'object', 'default' => []],
                 'spacing'    => ['type' => 'object', 'default' => []],
+                // Tving fuldbredde som standard og i UI
+                'align'      => ['type' => 'string', 'default' => 'full'],
             ],
             'render_callback' => [$this, 'render'],
-            'supports'        => [ 'inserter' => true ],
+            'supports'        => [
+                'inserter' => true,
+                // Kun fuldbredde er tilladt (hindrer side-om-side layoutvalg)
+                'align'    => [ 'full' ],
+                // Deaktiver unødvendige ting der kan påvirke layout
+                'anchor'   => false,
+                'html'     => false,
+                // Lad kun padding være redigerbar (margin kan skabe sidelægning)
+                'spacing'  => [ 'margin' => false, 'padding' => true ],
+            ],
             'editor_script'   => 'nowonline-elt-blocks-js',
             'style'           => null,                       // why: frontend CSS injected by Renderer
             'editor_style'    => 'nowonline-elt-blocks-css', // why: editor CSS (inserter thumbs, preview)
