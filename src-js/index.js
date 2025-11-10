@@ -28,11 +28,15 @@ domReady(() => {
       background: { type: "object", default: {} },
       responsive: { type: "object", default: {} },
       spacing: { type: "object", default: {} },
+
+      // Design-attributter (standard er nu '' for at tillade fallback)
       containerBg: { type: "string", default: "" },
       btnTextColor: { type: "string", default: "" },
       btnBorderColor: { type: "string", default: "" },
       btnBorderWidth: { type: "string", default: "" },
       btnBorderRadius: { type: "string", default: "" },
+
+      // Typografi-attributter (standard er nu '')
       fsH1: { type: "string", default: "" },
       fsH2: { type: "string", default: "" },
       fsH3: { type: "string", default: "" },
@@ -41,17 +45,21 @@ domReady(() => {
       fsH6: { type: "string", default: "" },
       fsBody: { type: "string", default: "" },
       fsBtn: { type: "string", default: "" },
+
+      // Baggrund-attributter (standard er nu '')
       bgVideo: { type: "string", default: "" },
       bgImg: { type: "string", default: "" },
       bgImgTablet: { type: "string", default: "" },
       bgImgMobile: { type: "string", default: "" },
-      bgPos: { type: "string", default: "center center" },
-      bgSize: { type: "string", default: "cover" },
-      bgRepeat: { type: "string", default: "no-repeat" },
-      bgFixed: { type: "boolean", default: false },
-      hideDesktop: { type: "boolean", default: false },
-      hideTablet: { type: "boolean", default: false },
-      hideMobile: { type: "boolean", default: false },
+      bgPos: { type: "string", default: "" }, // <-- RETTET (var 'center center')
+      bgSize: { type: "string", default: "" }, // <-- RETTET (var 'cover')
+      bgFixed: { type: "boolean", default: false }, // boolean er ok
+      bgRepeat: { type: "string", default: "" }, // <-- RETTET (var 'no-repeat')
+
+      // Advanced-attributter
+      hideDesktop: { type: "boolean", default: false }, // boolean er ok
+      hideTablet: { type: "boolean", default: false }, // boolean er ok
+      hideMobile: { type: "boolean", default: false }, // boolean er ok
       padTopDesktop: { type: "string", default: "" },
       padBottomDesktop: { type: "string", default: "" },
       padTopLaptop: { type: "string", default: "" },

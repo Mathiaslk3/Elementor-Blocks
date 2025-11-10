@@ -38,7 +38,7 @@ final class TemplateBlock
             'category'        => 'nowonline-elementor',
             
             // OPDATERET: Komplet liste af attributter, der matcher src-js/index.js
-            'attributes'      => [
+'attributes'      => [
                 'templateId' => ['type' => 'number', 'default' => 0],
                 'gap'        => ['type' => 'number', 'default' => 24],
                 'fields'     => ['type' => 'object', 'default' => []],
@@ -70,10 +70,10 @@ final class TemplateBlock
                 'bgImg' => ['type' => 'string', 'default' => ''],
                 'bgImgTablet' => ['type' => 'string', 'default' => ''],
                 'bgImgMobile' => ['type' => 'string', 'default' => ''],
-                'bgPos' => ['type' => 'string', 'default' => 'center center'],
-                'bgSize' => ['type' => 'string', 'default' => 'cover'],
+                'bgPos' => ['type' => 'string', 'default' => ''],     // <-- RETTET
+                'bgSize' => ['type' => 'string', 'default' => ''],    // <-- RETTET
                 'bgFixed' => ['type' => 'boolean', 'default' => false],
-                'bgRepeat' => ['type' => 'string', 'default' => 'no-repeat'], // Din nye attribut
+                'bgRepeat' => ['type' => 'string', 'default' => ''],  // <-- RETTET
 
                 // Advanced-attributter
                 'hideDesktop' => ['type' => 'boolean', 'default' => false],

@@ -19,7 +19,11 @@ final class DynamicCss
     public function build_wrapper_styles(array $attrs): array
     {
         $vars = [];
-        if (!empty($attrs['containerBg']))   $vars['--now-bg-color']  = DataHelper::sanitize_color((string)$attrs['containerBg']);
+        
+        // --- RETTELSE: Fjernet for at forhindre overskrivning af Elementor-baggrund ---
+        // if (!empty($attrs['containerBg']))   $vars['--now-bg-color']  = DataHelper::sanitize_color((string)$attrs['containerBg']);
+        // --- SLUT PÅ RETTELSE ---
+
         if (!empty($attrs['btnTextColor']))  $vars['--now-btn-color'] = DataHelper::sanitize_color((string)$attrs['btnTextColor']);
         if (!empty($attrs['btnBorderColor']))$vars['--now-btn-bdc']   = DataHelper::sanitize_color((string)$attrs['btnBorderColor']);
         if (!empty($attrs['btnBorderWidth']))$vars['--now-btn-bdw']   = DataHelper::sanitize_length((string)$attrs['btnBorderWidth']);

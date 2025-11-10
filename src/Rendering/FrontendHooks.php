@@ -103,9 +103,11 @@ final class FrontendHooks
         $css  = '';
         $css .= '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}';
         $css .= '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}';
-        // Kun background-color (ellers nulstilles background-image)
-        $css .= $targets.'{background-color:var(--now-bg-color)!important;}';
-        $css .= $overlayTargets.'{background-color:var(--now-bg-color)!important;}';
+        
+        // --- RETTELSE: Disse to linjer er fjernet ---
+        // $css .= $targets.'{background-color:var(--now-bg-color)!important;}';
+        // $css .= $overlayTargets.'{background-color:var(--now-bg-color)!important;}';
+        // --- SLUT PÅ RETTELSE ---
 
         // Knap-variabler – ingen tvungen border-style (template arver som default)
         $css .= $btnSel.'{'
