@@ -47,6 +47,7 @@ domReady(() => {
       bgImgMobile: { type: "string", default: "" },
       bgPos: { type: "string", default: "center center" },
       bgSize: { type: "string", default: "cover" },
+      bgRepeat: { type: "string", default: "no-repeat" },
       bgFixed: { type: "boolean", default: false },
       hideDesktop: { type: "boolean", default: false },
       hideTablet: { type: "boolean", default: false },

@@ -14,14 +14,14 @@ import {
   labelFor,
   Row,
   sanitizeRichHtml,
-} from "../../utils";
+} from "../utils";
 
 // Importer felt-komponenter
-import { ImageField } from "./ImageField";
-import { VideoField } from "./VideoField";
-import { GalleryField } from "./GalleryField";
-import { UrlField } from "./UrlField";
-import { TinyMCEField } from "./TinyMCEField";
+import { ImageField } from "./fields/ImageField";
+import { VideoField } from "./fields/VideoField";
+import { GalleryField } from "./fields/GalleryField";
+import { UrlField } from "./fields/UrlField";
+import { TinyMCEField } from "./fields/TinyMCEField";
 
 // Tjek om vi har TinyMCE
 const hasTiny = !!(
@@ -30,6 +30,28 @@ const hasTiny = !!(
   window.wp.editor.initialize &&
   window.tinymce
 );
+
+// --- LØSNING TRIN 1: DEFINER KOMPONENTEN UDENFOR ---
+// ButtonSection er nu sin egen komponent, der modtager props.
+const ButtonSection = ({ btnTextDef, btnUrlDef, fields, setField, block }) => {
+  if (!btnTextDef && !btnUrlDef) return null;
+
+  return (
+    <PanelBody title={__("Knap", "nowonline")} initialOpen={true}>
+      {btnTextDef && (
+        <Row label={__("Tekst", "nowonline")} key="btn-text">
+          <TextControl
+            value={fields[btnTextDef.key] || ""}
+            onChange={(v) => setField(btnTextDef.key, v)}
+            placeholder={__("Skriv knaptekst…", "nowonline")}
+            className="now-elt-input-narrow"
+          />
+        </Row>
+      )}
+      {btnUrlDef && <UrlField block={block} def={btnUrlDef} />}
+    </PanelBody>
+  );
+};
 
 export const ContentTab = ({ block, defs, activeTab, showEditor }) => {
   const { attributes, setAttributes } = block;
@@ -103,28 +125,17 @@ export const ContentTab = ({ block, defs, activeTab, showEditor }) => {
     </Row>
   ));
 
-  const ButtonSection = () => {
-    if (!btnTextDef && !btnUrlDef) return null;
-    return (
-      <PanelBody title={__("Knap", "nowonline")} initialOpen={true}>
-        {btnTextDef && (
-          <Row label={__("Tekst", "nowonline")} key="btn-text">
-            <TextControl
-              value={fields[btnTextDef.key] || ""}
-              onChange={(v) => setField(btnTextDef.key, v)}
-              placeholder={__("Skriv knaptekst…", "nowonline")}
-              className="now-elt-input-narrow"
-            />
-          </Row>
-        )}
-        {btnUrlDef && <UrlField block={block} def={btnUrlDef} />}
-      </PanelBody>
-    );
-  };
-
   return (
     <div>
-      <ButtonSection />
+      {/* --- LØSNING TRIN 2: KALD KOMPONENTEN MED PROPS --- */}
+      <ButtonSection
+        btnTextDef={btnTextDef}
+        btnUrlDef={btnUrlDef}
+        fields={fields || {}}
+        setField={setField}
+        block={block}
+      />
+
       {richInputs}
       {textInputs}
       {areaInputs}

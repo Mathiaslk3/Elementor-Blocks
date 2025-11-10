@@ -10,7 +10,7 @@ import {
 import { MediaUpload } from "@wordpress/block-editor";
 import { Row } from "../utils";
 
-// Fælles billedvælger-komponent
+// Fælles billedvælger-komponent (uændret)
 const ImgPicker = ({ label, attrKey, attributes, setAttributes }) => {
   const url = attributes[attrKey] || "";
   const onSelect = (media) =>
@@ -45,7 +45,7 @@ const ImgPicker = ({ label, attrKey, attributes, setAttributes }) => {
   );
 };
 
-// Videovælger-komponent
+// Videovælger-komponent (uændret)
 const VideoPicker = ({ attributes, setAttributes }) => {
   const url = attributes.bgVideo || "";
   const onSelect = (media) =>
@@ -107,7 +107,8 @@ export const BackgroundTab = ({ attributes, setAttributes }) => {
           attributes={attributes}
           setAttributes={setAttributes}
         />
-        <div className="now-elt-grid-3">
+        {/* OPDATERET: Ændret fra grid-3 til grid-2 for et 2x2 layout */}
+        <div className="now-elt-grid-2" style={{ alignItems: "flex-end" }}>
           <SelectControl
             label={__("Background position", "nowonline")}
             value={attributes.bgPos || "center center"}
@@ -134,6 +135,21 @@ export const BackgroundTab = ({ attributes, setAttributes }) => {
               { value: "auto", label: "auto" },
             ]}
           />
+
+          {/* --- NYT FELT TILFØJET HER --- */}
+          <SelectControl
+            label={__("Background repeat", "nowonline")}
+            value={attributes.bgRepeat || "no-repeat"}
+            onChange={(v) => setAttributes({ bgRepeat: v })}
+            options={[
+              { value: "no-repeat", label: "No Repeat" },
+              { value: "repeat", label: "Repeat" },
+              { value: "repeat-x", label: "Repeat X" },
+              { value: "repeat-y", label: "Repeat Y" },
+            ]}
+          />
+          {/* --- SLUT NYT FELT --- */}
+
           <CheckboxControl
             label={__("Background Fixed", "nowonline")}
             checked={!!attributes.bgFixed}

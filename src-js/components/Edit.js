@@ -7,10 +7,14 @@ import { useSelect, useDispatch } from "@wordpress/data";
 import { getFieldDefs } from "../utils";
 import { OnlyPreviewEl, PreviewFirstLayer } from "./Preview";
 import { EditorShell } from "./EditorShell";
-import { ContentTab } from "./fields/ContentTab";
+
+// --- RETTET IMPORT-STIER ---
+// Disse filer ligger på samme niveau som Edit.js
+import { ContentTab } from "./ContentTab";
 import { DesignTab } from "./DesignTab";
 import { BackgroundTab } from "./BackgroundTab";
 import { AdvancedTab } from "./AdvancedTab";
+// --- SLUT PÅ RETTELSE ---
 
 export const Edit = (props) => {
   const { attributes, setAttributes, clientId, __unstableIsPreview } = props;
@@ -53,21 +57,33 @@ export const Edit = (props) => {
     };
 
     if (PROBLEM_PARENTS[parentBlockType] && !movedRef.current) {
-      const block = props; // Hele blok-objektet
-      removeBlocks([clientId], false);
-      insertBlocks(block.attributes, clientId); // Indsæt blokken igen på roden
+      const block = props.block; // Få fat i det korrekte blok-objekt
 
-      movedRef.current = true;
-      createNotice(
-        "warning",
-        __(
-          "NowOnline-blokken kan ikke placeres side om side. Den er flyttet til fuld bredde.",
-          "nowonline"
-        ),
-        { type: "snackbar" }
-      );
+      // Tjek om block er valid før vi forsøger at genindsætte
+      if (block && block.clientId) {
+        removeBlocks([clientId], false);
+        // Brug insertBlocks med det fulde blok-objekt
+        insertBlocks(block);
+
+        movedRef.current = true;
+        createNotice(
+          "warning",
+          __(
+            "NowOnline-blokken kan ikke placeres side om side. Den er flyttet til fuld bredde.",
+            "nowonline"
+          ),
+          { type: "snackbar" }
+        );
+      }
     }
-  }, [parentBlockType, clientId, removeBlocks, insertBlocks, createNotice]);
+  }, [
+    parentBlockType,
+    clientId,
+    removeBlocks,
+    insertBlocks,
+    createNotice,
+    props.block,
+  ]); // Tilføjet props.block som dependency
 
   // Håndter preview-tilstand (fx i Inserter)
   if (__unstableIsPreview) {

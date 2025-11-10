@@ -193,6 +193,12 @@
   border: 1px solid var(--elt-line);
   border-radius: var(--elt-radius);
   padding: 12px 12px 14px;
+
+  /* NYT: Begræns bredde og centrer */
+  max-width: 1360px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box; /* Vigtig for at padding virker korrekt */
 }
 
 .now-elt-tabbar {
@@ -307,13 +313,15 @@
 /* STORT preview (bruges når editor.js sætter --large) */
 .now-elt-canvas-preview--large {
   max-height: none !important;
-  aspect-ratio: 16 / 9; /* føles som Elementor hero */
-  height: auto;
+  /* FJERNET: aspect-ratio: 16 / 9; */
+  height: auto; /* Din ønskede auto-højde */
   width: 100%;
-  object-fit: cover; /* fyld hele feltet */
+  object-fit: contain; /* ÆNDRET: 'contain' respekterer billedets proportioner */
   object-position: center;
   border-radius: 10px;
   margin-bottom: 12px;
+  /* NYT: Pæn baggrund til 'contain'-tilstand */
+  background-color: #f0f0f1;
 }
 
 /* Background preview-størrelser */
@@ -460,7 +468,8 @@
 /* Hvis nogen alligevel lægger den i en core/row eller group med flex-layout,
    så tvinger vi den på egen linje */
 .wp-block-group.is-layout-flex > .wp-block[data-type="nowonline/elt-template"],
-.wp-block[data-type="core/row"] > .wp-block[data-type="nowonline/elt-template"] {
+.wp-block[data-type="core/row"]
+  > .wp-block[data-type="nowonline/elt-template"] {
   flex-basis: 100% !important;
 }
 

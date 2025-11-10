@@ -1,15 +1,28 @@
 <?php
-// File: src/Blocks/TemplateBlock.php
+// Fil: src/Blocks/TemplateBlock.php
 namespace NowOnline\EltBlocks\Blocks;
 
 use NowOnline\EltBlocks\Rendering\Renderer;
-use NowOnline\EltBlocks\Services\PlaceholderScanner;
+// PlaceholderScanner er ikke nødvendig her længere
 
 if (!defined('ABSPATH')) { exit; }
 
 final class TemplateBlock
 {
     public const NAME = 'nowonline/elt-template';
+
+    /**
+     * @var Renderer Den renderer-service vi modtager fra Plugin.php
+     */
+    private Renderer $renderer;
+
+    /**
+     * OPDATERET: Modtag den renderer-service, der er bygget af Plugin-containeren.
+     */
+    public function __construct(Renderer $renderer)
+    {
+        $this->renderer = $renderer;
+    }
 
     public function register(): void
     {
@@ -23,6 +36,8 @@ final class TemplateBlock
         register_block_type(self::NAME, [
             'api_version'     => 2,
             'category'        => 'nowonline-elementor',
+            
+            // OPDATERET: Komplet liste af attributter, der matcher src-js/index.js
             'attributes'      => [
                 'templateId' => ['type' => 'number', 'default' => 0],
                 'gap'        => ['type' => 'number', 'default' => 24],
@@ -31,36 +46,71 @@ final class TemplateBlock
                 'background' => ['type' => 'object', 'default' => []],
                 'responsive' => ['type' => 'object', 'default' => []],
                 'spacing'    => ['type' => 'object', 'default' => []],
-                // Tving fuldbredde som standard og i UI
                 'align'      => ['type' => 'string', 'default' => 'full'],
+                
+                // Design-attributter
+                'containerBg' => ['type' => 'string', 'default' => ''],
+                'btnTextColor' => ['type' => 'string', 'default' => ''],
+                'btnBorderColor' => ['type' => 'string', 'default' => ''],
+                'btnBorderWidth' => ['type' => 'string', 'default' => ''],
+                'btnBorderRadius' => ['type' => 'string', 'default' => ''],
+
+                // Typografi-attributter
+                'fsH1' => ['type' => 'string', 'default' => ''],
+                'fsH2' => ['type' => 'string', 'default' => ''],
+                'fsH3' => ['type' => 'string', 'default' => ''],
+                'fsH4' => ['type' => 'string', 'default' => ''],
+                'fsH5' => ['type' => 'string', 'default' => ''],
+                'fsH6' => ['type' => 'string', 'default' => ''],
+                'fsBody' => ['type' => 'string', 'default' => ''],
+                'fsBtn' => ['type' => 'string', 'default' => ''],
+
+                // Baggrund-attributter
+                'bgVideo' => ['type' => 'string', 'default' => ''],
+                'bgImg' => ['type' => 'string', 'default' => ''],
+                'bgImgTablet' => ['type' => 'string', 'default' => ''],
+                'bgImgMobile' => ['type' => 'string', 'default' => ''],
+                'bgPos' => ['type' => 'string', 'default' => 'center center'],
+                'bgSize' => ['type' => 'string', 'default' => 'cover'],
+                'bgFixed' => ['type' => 'boolean', 'default' => false],
+                'bgRepeat' => ['type' => 'string', 'default' => 'no-repeat'], // Din nye attribut
+
+                // Advanced-attributter
+                'hideDesktop' => ['type' => 'boolean', 'default' => false],
+                'hideTablet' => ['type' => 'boolean', 'default' => false],
+                'hideMobile' => ['type' => 'boolean', 'default' => false],
+                'padTopDesktop' => ['type' => 'string', 'default' => ''],
+                'padBottomDesktop' => ['type' => 'string', 'default' => ''],
+                'padTopLaptop' => ['type' => 'string', 'default' => ''],
+                'padBottomLaptop' => ['type' => 'string', 'default' => ''],
+                'padTopTablet' => ['type' => 'string', 'default' => ''],
+                'padBottomTablet' => ['type' => 'string', 'default' => ''],
+                'padTopMobile' => ['type' => 'string', 'default' => ''],
+                'padBottomMobile' => ['type' => 'string', 'default' => ''],
             ],
+            
             'render_callback' => [$this, 'render'],
             'supports'        => [
                 'inserter' => true,
-                // Kun fuldbredde er tilladt (hindrer side-om-side layoutvalg)
                 'align'    => [ 'full' ],
-                // Deaktiver unødvendige ting der kan påvirke layout
                 'anchor'   => false,
                 'html'     => false,
-                // Lad kun padding være redigerbar (margin kan skabe sidelægning)
                 'spacing'  => [ 'margin' => false, 'padding' => true ],
             ],
             'editor_script'   => 'nowonline-elt-blocks-js',
-            'style'           => null,                       // why: frontend CSS injected by Renderer
-            'editor_style'    => 'nowonline-elt-blocks-css', // why: editor CSS (inserter thumbs, preview)
+            'style'           => null,
+            'editor_style'    => 'nowonline-elt-blocks-css',
         ]);
     }
 
     /**
-     * Server-side render wrapper.
-     * Builds a minimal Renderer with a fresh PlaceholderScanner.
+     * OPDATERET: Server-side render wrapper.
+     * Bruger nu den injicerede Renderer-service.
      */
     public function render(array $attrs = [], string $content = '', $block = null): string
     {
-        if (class_exists(Renderer::class) && class_exists(PlaceholderScanner::class)){
-            $renderer = new Renderer(new PlaceholderScanner());
-            return $renderer->render($attrs, $content);
-        }
-        return '';
+        // Vi behøver ikke længere at tjekke om klasser eksisterer,
+        // for vi fik $this->renderer injiceret i constructoren.
+        return $this->renderer->render($attrs, $content);
     }
 }
