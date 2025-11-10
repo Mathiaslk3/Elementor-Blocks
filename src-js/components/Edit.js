@@ -8,13 +8,11 @@ import { getFieldDefs } from "../utils";
 import { OnlyPreviewEl, PreviewFirstLayer } from "./Preview";
 import { EditorShell } from "./EditorShell";
 
-// --- RETTET IMPORT-STIER ---
-// Disse filer ligger på samme niveau som Edit.js
+// Importer fane-komponenterne
 import { ContentTab } from "./ContentTab";
 import { DesignTab } from "./DesignTab";
 import { BackgroundTab } from "./BackgroundTab";
 import { AdvancedTab } from "./AdvancedTab";
-// --- SLUT PÅ RETTELSE ---
 
 export const Edit = (props) => {
   const { attributes, setAttributes, clientId, __unstableIsPreview } = props;
@@ -31,14 +29,18 @@ export const Edit = (props) => {
     setShowEditor(false);
   }, [templateId]);
 
-  // Håndter blokkens placering (flyt ud af kolonner)
-  const movedRef = useRef(false);
-  const { parentBlockType } = useSelect(
+  // --- START PÅ RETTELSE ---
+
+  // Hent block-data og dispatchers
+  const { block, parentBlockType } = useSelect(
     (select) => {
-      const { getBlockParents, getBlockName } = select("core/block-editor");
-      const parents = getBlockParents(clientId);
-      const firstParentId = parents[parents.length - 1];
+      const { getBlock, getBlockParents, getBlockName } =
+        select("core/block-editor");
+      const parents = getBlockParents(clientId, true); // true = inkluderer root
+      const firstParentId = parents.length > 0 ? parents[0] : null;
+
       return {
+        block: getBlock(clientId),
         parentBlockType: firstParentId ? getBlockName(firstParentId) : null,
       };
     },
@@ -47,23 +49,21 @@ export const Edit = (props) => {
 
   const { removeBlocks, insertBlocks } = useDispatch("core/block-editor");
   const { createNotice } = useDispatch("core/notices");
+  const movedRef = useRef(false);
 
   useEffect(() => {
     const PROBLEM_PARENTS = {
       "core/columns": 1,
       "core/column": 1,
       "core/row": 1,
-      "core/group": 1, // Antager, at group også kan være et problem
+      "core/group": 1,
     };
 
+    // 'parentBlockType' er nu korrekt defineret via useSelect
     if (PROBLEM_PARENTS[parentBlockType] && !movedRef.current) {
-      const block = props.block; // Få fat i det korrekte blok-objekt
-
-      // Tjek om block er valid før vi forsøger at genindsætte
-      if (block && block.clientId) {
+      if (block) {
         removeBlocks([clientId], false);
-        // Brug insertBlocks med det fulde blok-objekt
-        insertBlocks(block);
+        insertBlocks(block); // Genindsæt selve blokken på rod-niveau
 
         movedRef.current = true;
         createNotice(
@@ -82,8 +82,15 @@ export const Edit = (props) => {
     removeBlocks,
     insertBlocks,
     createNotice,
-    props.block,
-  ]); // Tilføjet props.block som dependency
+    block,
+  ]); // Dependency array er nu korrekt
+
+  // --- SLUT PÅ RETTELSE ---
+
+  // Slette-funktion (fra forrige trin, er korrekt)
+  const onDeleteBlock = () => {
+    removeBlocks(clientId);
+  };
 
   // Håndter preview-tilstand (fx i Inserter)
   if (__unstableIsPreview) {
@@ -130,6 +137,7 @@ export const Edit = (props) => {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         setShowEditor={setShowEditor}
+        onDeleteBlock={onDeleteBlock}
       >
         {tabContent}
       </EditorShell>
