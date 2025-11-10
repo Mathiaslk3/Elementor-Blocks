@@ -1,0 +1,12 @@
+# Afhængigheder (installeres med 'npm install')
+/node_modules/
+
+# Build-filer (genereres med 'npm run build')
+/build/
+
+# OS-specifikke filer
+.DS_Store
+Thumbs.db
+
+# Editor-specifikke indstillinger
+/.vscode/

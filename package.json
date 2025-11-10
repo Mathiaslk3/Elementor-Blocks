@@ -1,0 +1,13 @@
+{
+  "name": "nowonline-elementor-blocks",
+  "version": "2.13.29",
+  "private": true,
+  "scripts": {
+    "build": "wp-scripts build src-js/index.js --output-path=build",
+    "start": "wp-scripts start src-js/index.js --output-path=build",
+    "format": "wp-scripts format"
+  },
+  "devDependencies": {
+    "@wordpress/scripts": "^27.0.0"
+  }
+}
