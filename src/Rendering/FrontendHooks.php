@@ -14,6 +14,7 @@ final class FrontendHooks
 
     public function register(): void
     {
+        // Kør CSS sent så vi vinder over Elementor/tema (og undgår minify-race)
         add_action('wp_head',   [$this, 'frontend_css'], 999);
         add_action('wp_footer', [$this, 'inject_header_body_class']);
     }
@@ -63,30 +64,51 @@ final class FrontendHooks
             . '{font-size:var(--now-fs-btn)!important;}';
 
         
-        // --- START PÅ DEN ENDELIGE RETTELSE ---
+        // --- START PÅ DEN KIRURGISKE RETTELSE ---
         
-        // Denne CSS skal *KUN* gælde for widgets, der indeholder inline styling.
+        // Definer vores base-selectors
         $killBase = '.nowonline-elt-wrapper .nowonline-elt-module';
+        $headingSelector = $killBase.' .elementor-widget-heading .elementor-heading-title';
+        $textEditorSelector = $killBase.' .elementor-widget-text-editor';
 
-        // Vi kombinerer :has(span[style]) med widget-klasserne.
-        // Dette betyder: "Find en overskrift-widget, som et sted indeni har et span-tag
-        // med en style-attribut, og NULSTIL DEN."
-        $killSelectors = [
-            $killBase.' .elementor-widget-heading .elementor-heading-title:has(span[style])',
-            $killBase.' .elementor-widget-text-editor:has(span[style])',
-            $killBase.' .elementor-widget-text-editor p:has(span[style])'
-        ];
+        // Byg en "intelligent" nulstilling.
+        // Nulstil KUN den specifikke egenskab, hvis et barn-span har den defineret.
+        $killInlineCss = "
+            /* Nulstil kun font-size, hvis et span[style*='font-size'] findes */
+            $headingSelector:has(span[style*='font-size']),
+            $textEditorSelector:has(span[style*='font-size']),
+            $textEditorSelector p:has(span[style*='font-size']) {
+                font-size: inherit !important;
+            }
 
-        // Denne CSS-regel anvendes nu KUN på de felter, du aktivt har stylet.
-        // Felter, du ikke har rørt (som "Titel"), vil ikke matche
-        // denne selector og vil derfor beholde deres Elementor-styling.
-        $killInlineCss = implode(',', $killSelectors) . '{
-            font-size: inherit !important;
-            line-height: inherit !important;
-            font-family: inherit !important;
-            font-weight: inherit !important;
-            color: inherit !important;
-        }';
+            /* Nulstil kun font-family, hvis et span[style*='font-family'] findes */
+            $headingSelector:has(span[style*='font-family']),
+            $textEditorSelector:has(span[style*='font-family']),
+            $textEditorSelector p:has(span[style*='font-family']) {
+                font-family: inherit !important;
+            }
+
+            /* Nulstil kun color, hvis et span[style*='color'] findes */
+            $headingSelector:has(span[style*='color']),
+            $textEditorSelector:has(span[style*='color']),
+            $textEditorSelector p:has(span[style*='color']) {
+                color: inherit !important;
+            }
+
+            /* Nulstil kun font-weight (fra bold/B-knappen) */
+            $headingSelector:has(strong), $headingSelector:has(b),
+            $textEditorSelector:has(strong), $textEditorSelector:has(b),
+            $textEditorSelector p:has(strong), $textEditorSelector p:has(b) {
+                font-weight: inherit !important;
+            }
+
+            /* Nulstil kun line-height */
+            $headingSelector:has(span[style*='line-height']),
+            $textEditorSelector:has(span[style*='line-height']),
+            $textEditorSelector p:has(span[style*='line-height']) {
+                line-height: inherit !important;
+            }
+        ";
         
         // --- SLUT PÅ RETTELSE ---
 
