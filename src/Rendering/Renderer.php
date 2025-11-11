@@ -12,11 +12,6 @@ if (!defined('ABSPATH')) { exit; }
 if (!defined('LIBXML_HTML_NOIMPLIED')) define('LIBXML_HTML_NOIMPLIED', 0);
 if (!defined('LIBXML_HTML_NODEFDTD')) define('LIBXML_HTML_NODEFDTD', 0);
 
-/**
- * Orkestrerer server-side rendering af blokken.
- * Henter data, kalder DomProcessor til at modificere HTML,
- * og DynamicCss til at bygge stlyes.
- */
 final class Renderer
 {
     private PlaceholderScanner $scanner;
@@ -36,17 +31,11 @@ final class Renderer
         $this->dataHelper = $dataHelper;
     }
 
-    /**
-     * Registrerer *ikke* længere hooks. Det gør FrontendHooks.php.
-     */
     public function register(): void
     {
         // Tom. Ansvaret er flyttet til FrontendHooks.php
     }
     
-    /**
-     * Normaliser Elementor "pipe" attributter.
-     */
     private static function normalize_elementor_attributes(string $html): string
     {
         $html = preg_replace('/\bdata-now-(img|image|bg)\s*\|\s*([a-zA-Z0-9_\-]+)/i', 'data-now-$1="$2"', $html);
@@ -56,9 +45,6 @@ final class Renderer
         return $html;
     }
 
-    /**
-     * Normaliser felttype baseret på definitioner.
-     */
     private static function norm_type(array $defs, string $key): string
     {
         $k = strtolower($key);
@@ -73,9 +59,6 @@ final class Renderer
         return 'text';
     }
 
-    /**
-     * Bygger et map af links (url, blank) ud fra fields.
-     */
     private function build_link_map(array $defs, array $fields): array
     {
         $out = [];
@@ -98,7 +81,6 @@ final class Renderer
         return $out;
     }
 
-    /** Opdag bg‐nøgler direkte i HTML */
     private static function discover_bg_keys_in_html(string $html): array
     {
         $keys = [];
@@ -111,7 +93,6 @@ final class Renderer
         return array_keys($keys);
     }
 
-    /** Bygger maps for billeder (img) og baggrunde (bg). */
     private function build_media_maps(array $defs, array $fields, string $html): array
     {
         $img = $bg = [];
@@ -122,7 +103,7 @@ final class Renderer
             $type = self::norm_type($defs, $key);
 
             if ($type === 'text' && isset($bgKeysInHtml[$key])) {
-                $type = 'bg'; // nøgle bruges som bg i templaten
+                $type = 'bg';
             }
 
             if ($type !== 'img' && $type !== 'bg') continue;
@@ -137,7 +118,6 @@ final class Renderer
         return [$img, $bg];
     }
 
-    /** Opdag galleri-nøgler direkte i HTML */
     private static function discover_gallery_keys_in_html(string $html): array
     {
         $keys = [];
@@ -150,7 +130,6 @@ final class Renderer
         return array_keys($keys);
     }
 
-    /** Bygger et map af gallerier (key => [urls]) */
     private function build_gallery_map(array $defs, array $fields, string $html): array
     {
         $out = [];
@@ -175,7 +154,6 @@ final class Renderer
         return $out;
     }
 
-    /** Bygger maps for video og video-posters. */
     private function build_video_maps(array $defs, array $fields): array
     {
         $video = [];
@@ -196,7 +174,6 @@ final class Renderer
         return [$video, $poster];
     }
 
-    /** Simpel fallback til at bygge et galleri (hvis DOM-processor fejler). */
     private static function build_simple_gallery(array $urls): string
     {
         if (empty($urls)) return '';
@@ -205,11 +182,9 @@ final class Renderer
         return '<div class="nowonline-elt-gallery">' . $items . '</div>';
     }
 
-    /** Simpel fallback til at bygge en video (hvis DOM-processor fejler). */
     private static function build_simple_video(string $url): string
     {
         if ($url === '') return '';
-        // Bruger DomProcessor's helper
         $v = DomProcessor::to_embed_url($url);
         if ($v['kind'] === 'youtube' || $v['kind'] === 'vimeo') {
             return '<iframe src="'.esc_url($v['url']).'" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>';
@@ -217,9 +192,6 @@ final class Renderer
         return '<video class="elementor-video" controls><source src="'.esc_url($v['url']).'"></video>';
     }
 
-    /**
-     * Tjek om en skabelon er en "header".
-     */
     private static function is_elementor_header_template(int $post_id): bool
     {
         if (!function_exists('wp_get_post_terms')) return false;
@@ -227,17 +199,12 @@ final class Renderer
         return is_array($slugs) && in_array('header', array_map('strtolower', $slugs), true);
     }
 
-
-    /**
-     * Hoved-renderingsmetoden.
-     */
     public function render($attrs = [], $content = ''): string
     {
         $tid    = isset($attrs['templateId']) ? (int)$attrs['templateId'] : 0;
         $fields = (isset($attrs['fields']) && is_array($attrs['fields'])) ? $attrs['fields'] : [];
         $bgColor = isset($attrs['containerBg']) ? $this->dataHelper::sanitize_color((string)$attrs['containerBg']) : '';
 
-        // Hent dynamiske styles fra den nye service
         $styles = $this->dynamicCss->build_wrapper_styles($attrs);
         $styleAttr = $styles['style_attr'];
         $extraClass = $styles['class_attr'];
@@ -259,7 +226,6 @@ final class Renderer
             $html = do_shortcode('[elementor-template id="' . $tid . '"]');
         }
         if (!$html) {
-            // Returner tom wrapper med responsive styles
             return '<div class="nowonline-elt-wrapper'.$extraClass.'"'.$styleAttr.$uidAttr.'>'
                  . $styleResponsiveTag
                  . '<div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"></div></div>';
@@ -268,13 +234,19 @@ final class Renderer
         $html = self::normalize_elementor_attributes($html);
         $defs = $this->scanner->scan($tid);
 
-        // Byg alle data-maps
         $linkMap = $this->build_link_map($defs, $fields);
         [$videoMap, $posterMap] = $this->build_video_maps($defs, $fields);
         [$imgMap, $bgMap] = $this->build_media_maps($defs, $fields, $html);
         $galMap = $this->build_gallery_map($defs, $fields, $html);
 
-        // === Token-erstatning (Simpel str_replace) ===
+        // --- START PÅ RETTELSE (LØSER SWAP-FEJL) ---
+        // Tjek om skabelonen bruger placeholders, FØR vi erstatter dem.
+        // `array_key_exists` er hurtigere end `isset` her.
+        $hasCorePlaceholders = array_key_exists('titel', $defs)
+                            || array_key_exists('undertitel', $defs)
+                            || array_key_exists('beskrivelse', $defs);
+        // --- SLUT PÅ RETTELSE ---
+
         if (!empty($fields)) {
             $search  = [];
             $replace = [];
@@ -340,12 +312,10 @@ final class Renderer
             }
             if ($search) $html = str_replace($search, $replace, $html);
         }
-
-        // === DOM-baseret erstatning (via DomProcessor) ===
         
-        // Links (href/target) på a[data-now-key]
         if (!empty($linkMap)) {
-            $html = preg_replace_callback(
+            // ... (al preg_replace_callback-logikken for links er uændret) ...
+             $html = preg_replace_callback(
                 '~<a\b([^>]*?\s)data-now-key=(["\'])([^"\']+)\2([^>]*)>~i',
                 function ($m) use ($linkMap) {
                     $attrs = trim($m[1] . ' ' . $m[4]);
@@ -398,29 +368,32 @@ final class Renderer
             );
         }
 
-        // Kald DomProcessor for de tunge opgaver
         $html = $this->domProcessor->rewrite_button_labels_dom($html, $fields);
-        $html = $this->domProcessor->rewrite_core_content_dom($html, $fields, $defs);
+
+        // --- START PÅ RETTELSE (LØSER SWAP-FEJL) ---
+        // Kør kun denne fallback, hvis skabelonen IKKE bruger [[titel]], [[undertitel]] etc.
+        if (!$hasCorePlaceholders) {
+            $html = $this->domProcessor->rewrite_core_content_dom($html, $fields, $defs);
+        }
+        // --- SLUT PÅ RETTELSE ---
+
         $html = $this->domProcessor->rewrite_media_dom($html, $imgMap, $bgMap);
         $html = $this->domProcessor->rewrite_galleries_dom($html, $galMap);
         $html = $this->domProcessor->rewrite_videos_dom($html, $videoMap, $posterMap);
 
-        // Håndter header-status
         $isHeader = self::is_elementor_header_template($tid);
         if ($isHeader) {
             FrontendHooks::mark_header_block_rendered();
         }
 
-        // Anvend inline baggrundsfarve (hvis sat)
         if ($bgColor !== '') {
             $html = $this->domProcessor->apply_bg_color_inline($html, $bgColor);
         }
 
-        // Anvend baggrundsmedie (video/billede)
         $bgOpts = [
-            'img'       => $this->dataHelper::fix_url($attrs['bgImg'] ?? ''), // <--- RETTET
-            'imgTablet' => $this->dataHelper::fix_url($attrs['bgImgTablet'] ?? ''), // <--- RETTET
-            'imgMobile' => $this->dataHelper::fix_url($attrs['bgImgMobile'] ?? ''), // <--- RETTET
+            'img'       => $this->dataHelper::fix_url($attrs['bgImg'] ?? ''),
+            'imgTablet' => $this->dataHelper::fix_url($attrs['bgImgTablet'] ?? ''),
+            'imgMobile' => $this->dataHelper::fix_url($attrs['bgImgMobile'] ?? ''),
             'pos'       => $this->dataHelper::sanitize_bg_pos($attrs['bgPos'] ?? ''),
             'size'      => $this->dataHelper::sanitize_bg_size($attrs['bgSize'] ?? ''),
             'repeat'    => $this->dataHelper::sanitize_bg_repeat($attrs['bgRepeat'] ?? ''),
@@ -429,14 +402,12 @@ final class Renderer
         ];
         $html = $this->domProcessor->apply_bg_media_inline($html, $bgOpts, $videoMap);
 
-        // Byg data-attribut til links
         $data_attr = '';
         if (!empty($linkMap)) {
             $data_attr .= ' data-nowlinks=\'' . esc_attr( wp_json_encode($linkMap) ) . '\'';
         }
         if ($isHeader) $data_attr .= ' data-nowelt-is-header="1"';
 
-        // Saml den endelige HTML
         return '<div class="nowonline-elt-wrapper'.$extraClass.'"'.$styleAttr.$uidAttr.'>'
              . $styleResponsiveTag
              . '<div class="nowonline-elt-module" data-template-id="' . (int)$tid . '"'.$data_attr.'>'

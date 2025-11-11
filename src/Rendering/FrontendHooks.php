@@ -10,33 +10,21 @@ if (!defined('ABSPATH')) { exit; }
  */
 final class FrontendHooks
 {
-    /**
-     * Holder styr på, om en header-blok er blevet renderet på denne side.
-     */
     private static bool $hasHeaderBlock = false;
 
     public function register(): void
     {
-        // Kør CSS sent så vi vinder over Elementor/tema (og undgår minify-race)
         add_action('wp_head',   [$this, 'frontend_css'], 999);
         add_action('wp_footer', [$this, 'inject_header_body_class']);
     }
 
-    /**
-     * Markér, at en header-blok er blevet renderet.
-     * Denne kaldes af Renderer.php.
-     */
     public static function mark_header_block_rendered(): void
     {
         self::$hasHeaderBlock = true;
     }
 
-    /**
-     * Injicerer den globale CSS i <head>.
-     */
     public function frontend_css(): void
     {
-        // VIGTIGT: Ingen frontend-CSS i admin (Gutenberg m.m.)
         if (is_admin()) return;
 
         $sel = apply_filters('nowonline_elt_header_hide_selectors', [
@@ -48,21 +36,15 @@ final class FrontendHooks
         $prefB = array_map(static fn($s) => 'html.nowelt-replace-header ' . $s, $sel);
         $hideCss = implode(',', array_merge($prefA, $prefB)) . '{display:none!important}';
 
-        $targets = '.nowonline-elt-wrapper [data-now-bg],.nowonline-elt-wrapper .now-bg,'
-                 . '.nowonline-elt-wrapper [data-nowonline-bg],.nowonline-elt-wrapper .nowonline-bg';
-        $overlayTargets = $targets . '>.elementor-background-overlay,' . $targets . ' .elementor-background-overlay';
-
-        // Kun hvis wrapperen faktisk har mindst én --now-btn-* variabel sat
         $btnScope = '.nowonline-elt-wrapper[style*="--now-btn-"] .nowonline-elt-module';
 
-        // Begræns til <a> (Elementor-knapper er typisk <a>) + dine now-link-varianter
         $btnSel = $btnScope . ' a[data-now-key],'
                 . $btnScope . ' a[class*="now-link-"],'
                 . $btnScope . ' a[id^="now-link-"],'
                 . $btnScope . ' a.elementor-button,'
                 . $btnScope . ' a.elementor-button-link';
 
-        // === Desktop font-size mapping – AKTIVERES KUN pr. level via wrapper-klasser ===
+        // === Desktop font-size mapping (fra Design-fane) ===
         $mk = static function(string $level): string {
             $sel = '.nowonline-elt-wrapper.nowelt-fs-'.$level.' .nowonline-elt-module ';
             return $sel.$level.','.
@@ -71,12 +53,7 @@ final class FrontendHooks
         };
 
         $fsCss =
-              $mk('h1')
-            . $mk('h2')
-            . $mk('h3')
-            . $mk('h4')
-            . $mk('h5')
-            . $mk('h6')
+              $mk('h1') . $mk('h2') . $mk('h3') . $mk('h4') . $mk('h5') . $mk('h6')
             . '.nowonline-elt-wrapper.nowelt-fs-body .nowonline-elt-module p,'
             . '.nowonline-elt-wrapper.nowelt-fs-body .nowonline-elt-module .elementor-widget-text-editor,'
             . '.nowonline-elt-wrapper.nowelt-fs-body .nowonline-elt-module .elementor-widget-text-editor p'
@@ -85,31 +62,41 @@ final class FrontendHooks
             . '.nowonline-elt-wrapper.nowelt-fs-btn .nowonline-elt-module .elementor-button'
             . '{font-size:var(--now-fs-btn)!important;}';
 
-        // Neutraliser INLINE font-size/line-height i overskrifter KUN hvis wrapper har heading-fs:
-        $killBase = '.nowonline-elt-wrapper.nowelt-fs-headings .nowonline-elt-module';
-        $killInlineSel = implode(',', [
-            $killBase.' .elementor-heading-title[style*="font-size"]',
-            $killBase.' .elementor-heading-title [style*="font-size"]',
-            $killBase.' h1[style*="font-size"]', $killBase.' h1 [style*="font-size"]',
-            $killBase.' h2[style*="font-size"]', $killBase.' h2 [style*="font-size"]',
-            $killBase.' h3[style*="font-size"]', $killBase.' h3 [style*="font-size"]',
-            $killBase.' h4[style*="font-size"]', $killBase.' h4 [style*="font-size"]',
-            $killBase.' h5[style*="font-size"]', $killBase.' h5 [style*="font-size"]',
-            $killBase.' h6[style*="font-size"]', $killBase.' h6 [style*="font-size"]'
-        ]);
-        $killInlineCss = $killInlineSel.'{font-size:inherit!important;line-height:inherit!important;}';
+        
+        // --- START PÅ DEN ENDELIGE RETTELSE ---
+        
+        // Denne CSS skal *KUN* gælde for widgets, der indeholder inline styling.
+        $killBase = '.nowonline-elt-wrapper .nowonline-elt-module';
+
+        // Vi kombinerer :has(span[style]) med widget-klasserne.
+        // Dette betyder: "Find en overskrift-widget, som et sted indeni har et span-tag
+        // med en style-attribut, og NULSTIL DEN."
+        $killSelectors = [
+            $killBase.' .elementor-widget-heading .elementor-heading-title:has(span[style])',
+            $killBase.' .elementor-widget-text-editor:has(span[style])',
+            $killBase.' .elementor-widget-text-editor p:has(span[style])'
+        ];
+
+        // Denne CSS-regel anvendes nu KUN på de felter, du aktivt har stylet.
+        // Felter, du ikke har rørt (som "Titel"), vil ikke matche
+        // denne selector og vil derfor beholde deres Elementor-styling.
+        $killInlineCss = implode(',', $killSelectors) . '{
+            font-size: inherit !important;
+            line-height: inherit !important;
+            font-family: inherit !important;
+            font-weight: inherit !important;
+            color: inherit !important;
+        }';
+        
+        // --- SLUT PÅ RETTELSE ---
+
 
         // Byg CSS
         $css  = '';
         $css .= '.nowonline-elt-gallery{display:flex;flex-wrap:wrap;gap:8px}';
         $css .= '.nowonline-elt-gallery img{max-width:100%;height:auto;display:block}';
-        
-        // --- RETTELSE: Disse to linjer er fjernet ---
-        // $css .= $targets.'{background-color:var(--now-bg-color)!important;}';
-        // $css .= $overlayTargets.'{background-color:var(--now-bg-color)!important;}';
-        // --- SLUT PÅ RETTELSE ---
 
-        // Knap-variabler – ingen tvungen border-style (template arver som default)
+        // Knap-variabler
         $css .= $btnSel.'{'
               . 'color:var(--now-btn-color)!important;'
               . 'border-color:var(--now-btn-bdc)!important;'
@@ -121,11 +108,11 @@ final class FrontendHooks
               . 'border-color:var(--now-btn-bdc)!important;'
               . '}';
 
-        // Var-mapping KUN på desktop (≥1025px) og kun for wrappers med de relevante klasser
+        // Desktop font-size overrides (hvis de er sat)
         $css .= '@media (min-width:1025px){'.$fsCss.'}';
 
-        // Nulstil inline font-size/line-height for headings (scopet til wrappers med heading-fs)
-        $css .= $killInlineCss;
+        // Vores nye, "intelligente" nulstillings-CSS
+        $css .= $killInlineCss; 
 
         $css .= '.nowonline-elt-wrapper .nowelt-has-bgvid{position:relative;overflow:hidden;}';
         $css .= '.nowonline-elt-wrapper .nowelt-bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;}';
@@ -141,7 +128,6 @@ final class FrontendHooks
      */
     public function inject_header_body_class(): void
     {
-        // VIGTIGT: Ingen DOM-klasse-scripts i admin
         if (is_admin()) return;
 
         if (!self::$hasHeaderBlock) return;

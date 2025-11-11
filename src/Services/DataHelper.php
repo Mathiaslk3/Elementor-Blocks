@@ -7,7 +7,6 @@ if (!defined('ABSPATH')) { exit; }
 /**
  * Håndterer al datarensning og -validering (sanitize).
  * Indeholder funktioner flyttet fra Renderer.php for SRP.
- * Navngivet DataHelper for at undgå konflikt med Integrations/Sanitizers.php.
  */
 final class DataHelper
 {
@@ -32,7 +31,6 @@ final class DataHelper
             }
         }
 
-        // undgå mixed content når site går på SSL
         if (is_ssl() && stripos($u, 'http://') === 0) {
             $homeHost = parse_url(home_url(), PHP_URL_HOST);
             $urlHost  = parse_url($u, PHP_URL_HOST);
@@ -114,7 +112,7 @@ final class DataHelper
         if (in_array($v, $allowed, true)) {
             return $v;
         }
-        return ''; // Returner 'no-repeat' som en sikker default, hvis du foretrækker
+        return '';
     }
 
     /**
@@ -129,18 +127,21 @@ final class DataHelper
         $html = preg_replace('/\sclass=("|\').*?\1/i', '', $html);
 
         if ($inlineOnly) {
+            // --- DENNE DEL ER RETTET ---
+            
+            // 1. Fjern kun blok-tags (p, div, h1 osv.)
             $html = preg_replace('#</?(?:p|div|h[1-6]|section|article|header|footer|blockquote|ul|ol|li)[^>]*>#i', '', $html);
-            $html = preg_replace('/\sstyle=("|\').*?\1/i', '', $html);
-            $html = preg_replace('#</?span[^>]*>#i', '', $html);
-
-            $allowed = [
-                'a'      => ['href' => true, 'target' => true, 'rel' => true],
-                'strong' => [], 'em' => [], 'b' => [], 'i' => [], 'u' => [],
-                'br'     => [], 'code' => [], 'sup' => [], 'sub' => [],
-            ];
-            return wp_kses($html, $allowed);
+            
+            // 2. Kør derefter resultatet igennem wp_kses_post().
+            // Denne funktion VED, at den skal tillade <span style="...">,
+            // fordi vi har fortalt den det i 'src/Integrations/TinyMCE.php'.
+            return wp_kses_post($html);
+            // --- SLUT PÅ RETTELSE ---
         }
 
+        // For felter, der IKKE er inlineOnly (f.eks. "Beskrivelse"),
+        // stoler vi på wp_kses_post. Din 'src/Integrations/TinyMCE.php'
+        // fil tilføjer allerede 'style' til 'p', 'div' osv. for denne funktion.
         return wp_kses_post($html);
     }
 }
